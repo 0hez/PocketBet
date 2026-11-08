@@ -1076,17 +1076,29 @@ async function loadMine() {
     const k = name + url; let im = prevCache.get(k);
     if (im) return im;
     im = new Image(); im.decoding = 'async'; im.alt = im.title = name;
-    // 7TV: the one-frame static picture first (a few KB, so it appears at once), then the small animated one, then the bigger one.
-    // A source is only dropped when it errors out; a slow download is left to finish.
-    const seven7 = url.match(/^(.*\/emote\/[^/]+\/)\dx\.(webp|avif|png|gif)$/);
-    const list = seven7 ? [seven7[1] + '1x_static.webp', seven7[1] + '1x.webp', url, seven7[1] + '2x.png'] : [...new Set([small(url), url])];
-    let n = 0, t = 0;
-    const arm = () => { clearTimeout(t); im.src = list[n]; t = setTimeout(() => { if (!im.naturalWidth && n < list.length - 1) fail() }, n == 0 ? 2500 : 9000) };
-    const fail = () => { clearTimeout(t); if (++n < list.length) arm(); else { prevCache.delete(k); im.onDead?.() } };
-    im.onload = () => clearTimeout(t); im.onerror = fail;
     prevCache.set(k, im);
     if (prevCache.size > 400) prevCache.delete(prevCache.keys().next().value);
-    late ? setTimeout(arm, late) : arm();
+    const seven7 = url.match(/^(.*\/emote\/[^/]+\/)\dx\.(webp|avif|png|gif)$/);
+    if (seven7) {
+      // 7TV: a one-frame still shows up right away, and the animated version replaces it the moment it has downloaded
+      const base = seven7[1], anims = [base + '1x.webp', base + '2x.webp', base + '2x.png'];
+      let ai = 0, animDone = false, stillOk = false;
+      const loadAnim = () => {
+        const a = new Image(); a.decoding = 'async';
+        a.onload = () => { animDone = true; im.src = a.src };   // already cached, so the swap is instant and it plays
+        a.onerror = () => { if (++ai < anims.length) loadAnim(); else if (!stillOk) im.onDead?.() };
+        a.src = anims[ai];
+      };
+      im.onload = () => { stillOk = true; im.onload = null };
+      im.onerror = () => { if (!animDone) im.onerror = null; /* no still: wait for the animated one */ };
+      const go = () => { im.src = base + '1x_static.webp'; loadAnim() };
+      late ? setTimeout(go, late) : go();
+      return im;
+    }
+    const list = [...new Set([small(url), url])]; let n = 0;
+    im.onerror = () => { if (++n < list.length) im.src = list[n]; else { prevCache.delete(k); im.onDead?.() } };
+    const go = () => { im.src = list[0] };
+    late ? setTimeout(go, late) : go();
     return im;
   }
   // a button for one emote preview: a fixed-size placeholder shows at once, the emote fades in when it is ready
