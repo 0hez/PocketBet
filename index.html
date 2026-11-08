@@ -1066,7 +1066,7 @@ async function loadMine() {
       seen.add(k); out.push([r, si, k, src[k]]);
     } });
     out.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2].length - b[2].length || a[2].localeCompare(b[2]));
-    return out.slice(0, 30).map(x => [x[0], x[2], x[3]]);
+    return out.slice(0, 20).map(x => [x[0], x[2], x[3]]);
   }
   // previews: small 1x images, reused between keystrokes so they never re-download or re-decode
   const prevCache = new Map();
@@ -1075,34 +1075,41 @@ async function loadMine() {
   function prevImg(name, url, late) {
     const k = name + url; let im = prevCache.get(k);
     if (im) return im;
-    im = new Image(); im.decoding = 'async'; im.alt = im.title = name;
+    im = new Image(); im.decoding = 'async'; im.alt = im.title = name; im._k = k;
     prevCache.set(k, im);
     if (prevCache.size > 400) prevCache.delete(prevCache.keys().next().value);
     const seven7 = url.match(/^(.*\/emote\/[^/]+\/)\dx\.(webp|avif|png|gif)$/);
+    let still = null, tm = 0;
+    // stop a download that is no longer wanted (you kept typing), so it can't hold up the ones that are
+    im._cancel = () => {
+      clearTimeout(tm); im.onload = im.onerror = null; if (still) still.onload = null;
+      im.removeAttribute('src'); still?.removeAttribute('src'); prevCache.delete(k);
+    };
     if (seven7) {
       // The animated file is the picture that is shown (so it plays as soon as it has downloaded). While it is still
       // coming in, a one-frame still of the same emote is drawn behind it, so there is never an empty box.
-      const base = seven7[1], anims = [base + '1x.webp', base + '2x.webp', base + '2x.png']; let ai = 0;
+      // AVIF is tried first: the same animation in a much smaller file; WebP is the fallback.
+      const base = seven7[1], anims = [base + '1x.avif', base + '1x.webp', base + '2x.webp']; let ai = 0;
       const ready = () => { if (!im._ready) { im._ready = true; im.dispatchEvent(new Event('ready')) } };
-      im.onload = () => { im.style.background = 'none'; im.style.width = ''; ready() }; // the animation is here: drop the still behind it (it showed through see-through emotes and looked frozen)
+      im.onload = () => { im.style.background = 'none'; im.style.width = ''; ready() };
       im.onerror = () => { if (++ai < anims.length) im.src = anims[ai]; else { im.removeAttribute('src'); if (!im._still) { prevCache.delete(k); im.onDead?.() } } };
-      const still = new Image();
+      still = new Image();
       still.onload = () => {
         im._still = true;
-        if (!im.naturalWidth) { // animated one not here yet: give the box the emote's real shape and paint the still in it
+        if (!im.naturalWidth) {
           im.style.width = Math.round(46 * still.naturalWidth / still.naturalHeight) + 'px';
           im.style.background = `url(${still.src}) center/contain no-repeat`;
           ready();
         }
       };
       const go = () => { still.src = base + '1x_static.webp'; im.src = anims[0] };
-      late ? setTimeout(go, late) : go();
+      late ? (tm = setTimeout(go, late)) : go();
       return im;
     }
     const list = [...new Set([small(url), url])]; let n = 0;
     im.onerror = () => { if (++n < list.length) im.src = list[n]; else { prevCache.delete(k); im.onDead?.() } };
     const go = () => { im.src = list[0] };
-    late ? setTimeout(go, late) : go();
+    late ? (tm = setTimeout(go, late)) : go();
     return im;
   }
   // a button for one emote preview: a fixed-size placeholder shows at once, the emote fades in when it is ready
@@ -1111,7 +1118,7 @@ async function loadMine() {
     im.onDead = () => b.remove();
     b.append(im);
   }
-  let updRaf = 0;
+  let updRaf = 0, curShown = new Set();
   const updSoon = () => { if (!updRaf) updRaf = requestAnimationFrame(() => { updRaf = 0; upd() }) };
   function upd() {
     const c = chans[cur], x = ctx();
@@ -1120,6 +1127,7 @@ async function loadMine() {
     const people = Object.entries(c.users || {}).filter(([k, u]) => k != me && (rank(k, x.q) >= 0 || rank(u.n, x.q) >= 0))
       .sort((a, b) => (rank(a[0], x.q) - rank(b[0], x.q)) || b[1].t - a[1].t).slice(0, 12);
     sun.replaceChildren(); sue.replaceChildren();
+    const shown = new Set(); curShown = shown;
     const btn = (parent, fn) => { const b = document.createElement('button'); b.type = 'button'; b.addEventListener('mousedown', e => e.preventDefault()); b.onclick = fn; parent.append(b); return b };
     for (const [, u] of people) {
       const b = btn(sun, () => pick('@' + u.n, x)), i = x.q ? u.n.toLowerCase().indexOf(x.q) : -1;
@@ -1128,8 +1136,10 @@ async function loadMine() {
     }
     if (!x.at) for (const [, name, url] of emotesFor(c, x.q)) {
       const b = btn(sue, () => pick(name, x));
-      prevBtn(b, prevImg(name, url, sue.children.length > 7 ? 150 + sue.children.length * 25 : 0));
+      const idx = sue.children.length; shown.add(name + url);
+      prevBtn(b, prevImg(name, url, idx < 6 ? 130 : 130 + (idx - 5) * 90)); // the first few start once typing pauses, the rest a little later
     }
+    for (const [k, im] of [...prevCache]) if (!im._ready && !shown.has(k)) im._cancel?.(); // drop downloads for emotes that are no longer in the strip
     box.classList.toggle('on', sun.children.length + sue.children.length > 0);
     clearTimeout(remT);
     if (!x.at && x.q.length >= 2) remT = setTimeout(() => remote(c, x.q), 220);
@@ -1145,7 +1155,7 @@ async function loadMine() {
     for (const [name, url] of add) {
       const b = document.createElement('button'); b.type = 'button'; b.addEventListener('mousedown', e => e.preventDefault());
       b.onclick = () => { c.emotes[name] ||= url; pick(name, x) }; // remembered, so it also shows as an emote when your message comes back in chat
-      sue.append(b); prevBtn(b, prevImg(name, url, 150 + sue.children.length * 25));
+      sue.append(b); curShown.add(name + url); prevBtn(b, prevImg(name, url, 300 + sue.children.length * 60));
     }
     box.classList.toggle('on', sun.children.length + sue.children.length > 0);
   }
