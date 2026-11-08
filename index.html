@@ -34,6 +34,9 @@ button.sec{background:var(--chip);color:var(--fg)}
 #sue{gap:12px}
 #sue button img{height:46px;max-width:140px;object-fit:contain;display:block}
 #in{padding:8px 10px}
+#bar #men{padding:0 9px;min-width:0;flex:none}
+#bar #men.on{background:var(--p);color:var(--pt)}
+#bar #men.new{outline:2px solid var(--p)}
 #bar button{min-height:32px;padding:0 12px}
 form{padding:6px 8px 2px}
 #send{min-height:36px}
@@ -112,6 +115,7 @@ dialog::backdrop{background:#0009}
 <nav id="bar">
   <div id="tabs"></div>
   <button id="add" aria-label="Add channel">+</button>
+  <button id="men" class="sec" aria-label="Mentions">@</button>
   <button id="cog" aria-label="Settings">⚙</button>
 </nav>
 <div id="notis"></div>
@@ -164,7 +168,13 @@ function applyCfg() {
 applyCfg();
 
 const fix = u => u.startsWith('//') ? 'https:' + u : u;
-const j = async u => { try { const r = await fetch(u); return r.ok ? await r.json() : null } catch { return null } };
+const j = async u => {
+  for (let t = 0; t < 3; t++) {
+    try { const r = await fetch(u); if (r.ok) return await r.json(); if (r.status < 500 && r.status != 429) return null } catch {}
+    await sleep(400 * (t + 1));
+  }
+  return null;
+};
 const hsl = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 60% ${cfg.theme == 'light' ? 35 : 65}%)` };
 const badges = (d, o) => { for (const [s, v] of Object.entries(d?.badge_sets || {})) for (const [k, x] of Object.entries(v.versions)) { o[s + '/' + k] = x.image_url_2x || x.image_url_1x; o['t:' + s + '/' + k] = x.title } };
 const seven = (l, o) => { for (const e of l || []) { const h = e.data?.host?.url; if (h) o[e.name] = fix(h) + '/2x.webp' } };
@@ -180,10 +190,17 @@ async function getBadges(kind, room, o) {
 }
 // 7TV badge per user (looked up once, cached)
 const sevenP = {};
-const sevenUser = uid => sevenP[uid] ||= j(`https://7tv.io/v3/users/twitch/${uid}`).then(d => d?.user?.style || null);
+const sevenUser = uid => sevenP[uid] ||= (async () => {
+  for (let t = 0; t < 3; t++) {
+    try { const r = await fetch(`https://7tv.io/v3/users/twitch/${uid}`); if (r.status == 404) return null; if (r.ok) return (await r.json())?.user?.style || null } catch {}
+    await sleep(500 * (t + 1));
+  }
+  delete sevenP[uid]; return null; // lookup failed: try again on their next message
+})();
 // 7TV paints (name gradients), fetched once per paint id
 const paintP = {};
-const sevenPaint = id => paintP[id] ||= fetch('https://7tv.io/v3/gql', {
+const sevenPaint = id => paintP[id] ||= fetchPaint(id).then(p => { if (!p) delete paintP[id]; return p });
+const fetchPaint = id => fetch('https://7tv.io/v3/gql', {
   method: 'POST', headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ query: 'query($l:[ObjectID!]){cosmetics(list:$l){paints{id function color angle image_url repeat stops{at color} shadows{x_offset y_offset radius color}}}}', variables: { l: [id] } })
 }).then(r => r.json()).then(d => d?.data?.cosmetics?.paints?.[0] || null).catch(() => null);
@@ -193,10 +210,15 @@ function paint(el, p) {
   const r = p.repeat ? 'repeating-' : '';
   const bg = p.function == 'LINEAR_GRADIENT' ? `${r}linear-gradient(${p.angle || 0}deg,${st})`
     : p.function == 'RADIAL_GRADIENT' ? `${r}radial-gradient(circle,${st})`
-    : p.image_url ? `url(${p.image_url})` : null;
+    : p.image_url ? `url(${fix(p.image_url)})` : null;
   if (!bg || (p.function != 'URL' && !st)) return;
-  Object.assign(el.style, { backgroundImage: bg, backgroundSize: p.function == 'URL' ? 'cover' : '', backgroundClip: 'text', webkitBackgroundClip: 'text', color: 'transparent', webkitTextFillColor: 'transparent' });
-  if (p.shadows?.length) el.style.filter = p.shadows.map(x => `drop-shadow(${x.x_offset}px ${x.y_offset}px ${x.radius}px ${rgba(x.color)})`).join(' ');
+  const base = el.style.color; // the normal name color stays underneath, so see-through parts of a paint never hide the name
+  const apply = () => {
+    Object.assign(el.style, { backgroundImage: bg + (base ? `,linear-gradient(${base},${base})` : ''), backgroundSize: p.function == 'URL' ? 'cover,auto' : '', backgroundClip: 'text', webkitBackgroundClip: 'text', color: 'transparent', webkitTextFillColor: 'transparent' });
+    if (p.shadows?.length) el.style.filter = p.shadows.map(x => `drop-shadow(${x.x_offset}px ${x.y_offset}px ${x.radius}px ${rgba(x.color)})`).join(' ');
+  };
+  if (p.function == 'URL') { const im = new Image(); im.onload = apply; im.src = fix(p.image_url) } // only switch once the image really loaded
+  else apply();
 }
 const fixColor = c => {
   if (!c || c.length != 7) return null;
@@ -317,6 +339,36 @@ function onIrc(m) {
   }
 }
 
+// emote image: retries, then other sizes/formats of the same emote, and finally shows the emote's name as text
+const emoteAlts = url => {
+  let m;
+  if ((m = url.match(/^(.*\/)(\d)x\.(webp|avif|gif|png)$/))) return [m[1] + m[2] + 'x.png', m[1] + '1x.webp', m[1] + '1x.png'];   // 7TV / BTTV
+  if ((m = url.match(/^(.*\/default\/)(dark|light)\/(\d\.0)$/))) return [m[1] + 'dark/1.0', m[1] + 'light/2.0'];                // Twitch
+  if ((m = url.match(/^(.*\/emoticon\/\d+\/)(\d)$/))) return [m[1] + '1'];                                                      // FFZ
+  return [];
+};
+function mkEmote(url, word, tp, c) {
+  const s = document.createElement('span'); s.className = 'em' + (tp ? ' tp' : ''); s.dataset.t = word;
+  const i = new Image(); i.src = url; i.className = 'e'; i.alt = word;
+  i.onload = () => { if (c.pin) toBottom(c) };
+  const list = [url, ...emoteAlts(url), url + (url.includes('?') ? '&' : '?') + 'r=' + Date.now()];
+  let k = 0;
+  i.onerror = () => { if (++k < list.length) setTimeout(() => { i.src = list[k] }, 350 * k); else { s.classList.add('x'); s.textContent = word } };
+  s.append(i); return s;
+}
+// messages that arrived before a channel's emote lists finished loading: turn their plain-text emote names into emotes
+function reEmote(c) {
+  for (const d of c.el.querySelectorAll('.m:not(.sys)')) {
+    const w = document.createTreeWalker(d, NodeFilter.SHOW_TEXT, { acceptNode: t => t.parentElement.closest('.nm,.ts,.em,.b') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+    const todo = []; for (let t; (t = w.nextNode());) todo.push(t);
+    for (const t of todo) {
+      const word = t.textContent.trim(); if (!word) continue;
+      const u = c.emotes[word] || G.emotes[word]; if (!u) continue;
+      t.replaceWith(mkEmote(u, word, true, c), t.textContent.endsWith(' ') ? ' ' : '');
+    }
+  }
+}
+
 // ---------- message rendering ----------
 function mkMsg(m, c, hist) {
   let text = m.trailing || '', action = false;
@@ -324,7 +376,7 @@ function mkMsg(m, c, hist) {
   text = text.replace(/[\u{E0000}-\u{E007F}\u200B-\u200F\u2060-\u2064\u034F\uFEFF\u180E\uFFFC]/gu, '').trimEnd(); // invisible characters used to bypass the duplicate block
   const d = document.createElement('div');
   d.className = 'm' + (hist ? ' h' : ''); if (m.tags.id) d.dataset.id = m.tags.id;
-  const img = (url, cls, parent, title, bg) => { const i = new Image(); i.src = url; i.className = cls; i.title = i.alt = title || ''; if (bg) { i.style.backgroundColor = bg; i.style.borderRadius = '4px' } i.onerror = () => i.remove(); i.onload = () => { if (c.pin) toBottom(c) }; parent.append(i) };
+  const img = (url, cls, parent, title, bg) => { const i = new Image(); i.src = url; i.className = cls; i.title = i.alt = title || ''; if (bg) { i.style.backgroundColor = bg; i.style.borderRadius = '4px' } let tr = 0; i.onerror = () => { if (tr++ < 3) setTimeout(() => { i.src = url + (url.includes('?') ? '&' : '?') + 'r=' + tr }, 500 * tr); else i.remove() }; i.onload = () => { if (c.pin) toBottom(c) }; parent.append(i) };
   if (cfg.hl && auth.u && (m.nick || '').toLowerCase() != auth.u.toLowerCase() &&
       new RegExp('(^|\\W)@?' + auth.u.replace(/\W/g, '') + '(?!\\w)', 'i').test(text)) d.classList.add('hl');
 
@@ -358,15 +410,7 @@ function mkMsg(m, c, hist) {
 
   // emote = <span class="em" data-t="word"><img></span>; CSS swaps it for the text when emotes are turned off
   let shown = false;
-  const emote = (url, word, tp) => {
-    shown = true;
-    const s = document.createElement('span'); s.className = 'em' + (tp ? ' tp' : ''); s.dataset.t = word;
-    const i = new Image(); i.src = url; i.className = 'e'; i.alt = word;
-    i.onload = () => { if (c.pin) toBottom(c) };
-    let tries = 0;
-    i.onerror = () => { if (tries++ < 2) setTimeout(() => { i.src = url + (url.includes('?') ? '&' : '?') + 'r=' + tries }, 600 * tries); else { s.classList.add('x'); s.textContent = word } };
-    s.append(i); root.append(s);
-  };
+  const emote = (url, word, tp) => { shown = true; root.append(mkEmote(url, word, tp, c)) };
 
   const native = {};
   for (const e of (m.tags.emotes || '').split('/')) {
@@ -501,6 +545,7 @@ async function load(c, room) {
   const frag = document.createDocumentFragment();
   for (const l of h?.messages || []) { const m = parse(l); if (m && m.cmd == 'PRIVMSG' && !muted(m)) frag.append(mkMsg(m, c, true)) }
   c.el.prepend(frag);
+  reEmote(c);
   if (c.pin) toBottom(c);
 }
 
@@ -526,13 +571,16 @@ function tabs(center) {
   let act = null;
   for (const n of order()) {
     if (!chans[n]) continue;
-    const b = document.createElement('button'), mt = n[0] == '@';
+    if (n[0] == '@') continue; // the @ mentions button lives next to settings
+    const b = document.createElement('button'), mt = false;
     b.textContent = mt ? '@' + (mUnread ? ' ' + mUnread : '') : n + (n == cur ? ' ✕' : '');
     b.className = (n == cur ? 'on ' : '') + ((mt ? mUnread : chans[n].unread) ? 'new' : '');
     b.onclick = () => n == cur ? (mt || close(n)) : show(n);
     if (n == cur) act = b;
     t.append(b);
   }
+  const men = $('#men'); men.textContent = '@' + (mUnread ? ' ' + mUnread : '');
+  men.className = 'sec' + (cur == '@mentions' ? ' on' : '') + (mUnread ? ' new' : '');
   t.scrollLeft = keep;
   $('#chat').classList.toggle('empty', !cur);
   if (center && act) t.scrollTo({ left: act.offsetLeft - (t.clientWidth - act.offsetWidth) / 2, behavior: 'smooth' });
@@ -818,6 +866,7 @@ $('#f').onsubmit = e => {
 }
 
 // ---------- UI ----------
+$('#men').onclick = () => { ensureMentions(); if (cur != '@mentions') show('@mentions') };
 $('#add').onclick = () => { const n = prompt('Channel name'); if (n) open(n) };
 
 // ---------- user card (tap a name) ----------
