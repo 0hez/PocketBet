@@ -1065,15 +1065,14 @@ document.addEventListener('pointerdown', e => {
   noClick = 0; hideTip(); clearTimeout(lp?.id); lp = null;
   if (!cfg.tips || e.button > 0) return;
   const t = lpTarget(e); if (!t) return;
-  lp = { x: e.clientX, y: e.clientY, id: setTimeout(() => { lp = null; noClick = Date.now(); describe(t) }, 450) };
+  lp = { x: e.clientX, y: e.clientY, id: setTimeout(() => { lp = null; noClick = 1; describe(t) }, 400) };
 }, true);
 const lpCancel = () => { if (lp) { clearTimeout(lp.id); lp = null } };
 document.addEventListener('pointerup', lpCancel, true);
 document.addEventListener('pointercancel', lpCancel, true);
-document.addEventListener('scroll', lpCancel, true);
-document.addEventListener('pointermove', e => { if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) lpCancel() }, true);
+document.addEventListener('pointermove', e => { if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 14) lpCancel() }, true);
 document.addEventListener('contextmenu', e => { if (cfg.tips && lpTarget(e)) e.preventDefault() }, true);
-document.addEventListener('click', e => { if (noClick && Date.now() - noClick < 1500) { e.stopPropagation(); e.preventDefault() } noClick = 0 }, true);
+document.addEventListener('click', e => { if (noClick) { e.stopPropagation(); e.preventDefault(); noClick = 0 } }, true);
 
 // ---------- user card (tap a name) ----------
 $('#chat').addEventListener('click', e => {
