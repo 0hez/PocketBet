@@ -14,10 +14,9 @@ html,body{height:100%;margin:0;overflow:hidden}
 body{position:fixed;top:0;left:0;right:0;display:flex;will-change:height,transform;flex-direction:column;height:100dvh;background:var(--bg);color:var(--fg);font:var(--fs)/1.5 var(--ff);padding-top:env(safe-area-inset-top)}
 header,form{display:flex;gap:6px;padding:8px}
 form{padding-bottom:4px}
-body.kbt{transition:height .27s cubic-bezier(.25,.8,.3,1)}
-body.kb #bar{height:0;padding-bottom:0;opacity:0;pointer-events:none}
+body.kb #bar{display:none}
 body.kb form{padding-bottom:6px}
-#bar{display:flex;flex:none;align-items:center;gap:6px;padding:0 8px calc(8px + env(safe-area-inset-bottom));overflow:hidden;height:var(--barh,auto);transition:height .27s cubic-bezier(.25,.8,.3,1),padding .27s cubic-bezier(.25,.8,.3,1),opacity .2s}
+#bar{display:flex;flex:none;align-items:center;gap:6px;padding:0 8px calc(8px + env(safe-area-inset-bottom))}
 input,select{flex:1;min-width:0;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:16px;font-family:inherit}
 button{background:var(--p);color:var(--pt);border:0;border-radius:8px;padding:0 14px;font-size:15px;min-height:40px;font-family:inherit}
 button.sec{background:var(--chip);color:var(--fg)}
@@ -38,6 +37,8 @@ button.sec{background:var(--chip);color:var(--fg)}
 #chat{position:relative;flex:1;min-height:0;overflow:hidden;touch-action:pan-y}
 #empty{position:absolute;inset:0;display:none;place-items:center;text-align:center;color:var(--mut)}
 #chat.empty #empty{display:grid}
+#jump{position:absolute;left:50%;bottom:10px;z-index:5;width:40px;height:40px;min-height:0;padding:0;border-radius:50%;font-size:20px;line-height:1;box-shadow:0 4px 14px #0009;transform:translate(-50%,12px);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s}
+#jump.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
 .log{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;padding:0 10px;display:flex;flex-direction:column;visibility:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;will-change:transform}
 .log.on,.log.peek{visibility:visible}
 .log.anim{transition:transform .3s cubic-bezier(.22,.8,.3,1)}
@@ -87,7 +88,7 @@ dialog::backdrop{background:#0009}
 </style>
 </head>
 <body>
-<div id="chat"><div id="empty">No channels open<br>Tap + to add one</div></div>
+<div id="chat"><div id="empty">No channels open<br>Tap + to add one</div><button id="jump" aria-label="Jump to latest messages">↓</button></div>
 <div id="sug"><div class="sr" id="sun"></div><div class="sr" id="sue"></div></div>
 <form id="f">
   <input id="in" placeholder="Send a message" autocomplete="off" enterkeyhint="send">
@@ -362,11 +363,13 @@ function mkMsg(m, c, hist) {
 
 // c.pin = "the user is reading the newest messages". Only the user's own scrolling changes it, never the
 // keyboard or layout changing, so the chat keeps following live while typing.
+const updJump = () => $('#jump').classList.toggle('on', !!chans[cur] && !chans[cur].pin);
 function toBottom(c) { c.prog = performance.now(); c.el.scrollTop = c.el.scrollHeight }
 function push(c, el) {
   c.el.append(el);
   while (c.el.children.length > cfg.max) c.el.firstChild.remove();
   if (c.pin) toBottom(c);
+  if (cur == c.name) updJump();
   if (cur != c.name && !c.unread) { c.unread = true; tabs() }
 }
 function sys(c, text) {
@@ -480,6 +483,7 @@ function show(n) {
   $('#in').placeholder = 'Message #' + n + (auth.u ? ' as ' + auth.u : '');
   saveChs(); tabs(true);
   if (c.pin) toBottom(c);
+  updJump();
 }
 function close(n) {
   if (ws && ws.readyState == 1) ws.send('PART #' + n);
@@ -488,6 +492,7 @@ function close(n) {
   const rest = Object.keys(chans);
   if (rest.length) show(rest[Math.min(i, rest.length - 1)]); else { cur = null; saveChs(); tabs() }
 }
+$('#jump').onclick = () => { const c = chans[cur]; if (!c) return; c.pin = true; c.el.scrollTo({ top: c.el.scrollHeight, behavior: 'smooth' }); c.prog = performance.now() + 600; updJump() };
 function open(name) {
   name = name.trim().toLowerCase().replace('#', ''); if (!name) return;
   if (!chans[name]) {
@@ -497,6 +502,7 @@ function open(name) {
     el.addEventListener('scroll', () => {
       if (performance.now() - c.prog < 150) return; // our own scroll-to-bottom
       c.pin = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+      if (cur == c.name) updJump();
     }, { passive: true });
     // whenever the box changes size (keyboard, suggestions bar, rotation) and the user is at the bottom, stay at the bottom
     c.ro = new ResizeObserver(() => { if (c.pin) toBottom(c) });
@@ -584,42 +590,29 @@ $('#f').onsubmit = e => {
   if (sendMsg(c, text)) $('#in').value = '';
 };
 
-// ---------- keyboard: input bar rides on top of the keyboard, animated in step with it ----------
+// ---------- keyboard: follow the real visual viewport every frame (no guessing, no CSS animation) ----------
 {
-  const vv = window.visualViewport, body = document.body, inp = $('#in'), bar = $('#bar'), root = document.documentElement;
-  let focused = false, kbH = store.get('kbh', 300), until = 0, tm = 0, raf = 0;
-  const anim = () => { body.classList.add('kbt'); clearTimeout(tm); tm = setTimeout(() => body.classList.remove('kbt'), 450) };
-  const measure = () => { // the tab bar's real height, so it can collapse smoothly when the keyboard opens
-    if (body.classList.contains('kb')) return;
-    root.style.setProperty('--barh', 'auto'); const h = bar.offsetHeight; root.style.setProperty('--barh', h + 'px');
-  };
+  const vv = window.visualViewport, body = document.body, inp = $('#in');
+  let polling = 0, stopAt = 0;
   const apply = () => {
-    raf = 0;
-    const now = performance.now();
-    let h = vv ? vv.height : innerHeight;
-    // right after focus/blur the viewport hasn't reported the keyboard yet: trust our own target
-    if (focused && innerHeight - h < 120 && now < until) h = innerHeight - kbH;
-    else if (!focused && now < until && h < innerHeight - 1) h = innerHeight;
-    h = Math.round(h);
-    if (!(Math.abs(parseFloat(body.style.height) - h) < 1)) { anim(); body.style.height = h + 'px' }
-    const top = vv && !(!focused && now < until) ? vv.offsetTop : 0;
-    body.style.transform = top > .5 ? `translate3d(0,${top}px,0)` : '';
-    if (focused && vv && innerHeight - vv.height > 120 && now >= until - 300) { kbH = Math.round(innerHeight - vv.height); store.set('kbh', kbH) }
+    if (!vv) return;
+    const h = Math.round(vv.height), top = Math.round(vv.offsetTop * 100) / 100;
+    if (body._h !== h) { body._h = h; body.style.height = h + 'px' }
+    if (body._t !== top) { body._t = top; body.style.transform = top > .5 ? `translate3d(0,${top}px,0)` : '' }
     if (window.scrollY) scrollTo(0, 0);
   };
-  const queue = () => { raf ||= requestAnimationFrame(apply) };
-  if (vv) { vv.addEventListener('resize', queue); vv.addEventListener('scroll', queue) }
-  inp.addEventListener('focus', () => {
-    focused = true; until = performance.now() + 600;
-    body.classList.add('kb'); queue(); setTimeout(queue, 650);
-  });
-  inp.addEventListener('blur', () => {
-    focused = false; until = performance.now() + 600;
-    body.classList.remove('kb'); queue(); setTimeout(queue, 650);
-  });
-  addEventListener('resize', () => { if (!focused) { measure(); queue() } });
-  addEventListener('orientationchange', () => setTimeout(() => { measure(); queue() }, 300));
-  measure(); document.fonts?.ready.then(measure);
+  // iOS reports the viewport progressively while the keyboard slides: sample it every frame for a moment
+  const poll = ms => {
+    stopAt = Math.max(stopAt, performance.now() + ms);
+    if (polling) return;
+    polling = 1;
+    const step = () => { apply(); if (performance.now() < stopAt) requestAnimationFrame(step); else polling = 0 };
+    requestAnimationFrame(step);
+  };
+  if (vv) { vv.addEventListener('resize', () => { apply(); poll(500) }); vv.addEventListener('scroll', apply) }
+  inp.addEventListener('focus', () => { body.classList.add('kb'); apply(); poll(900) });
+  inp.addEventListener('blur', () => { body.classList.remove('kb'); apply(); poll(900) });
+  addEventListener('scroll', () => { if (window.scrollY) scrollTo(0, 0) });
   // stop iOS from dragging the whole page around while the keyboard is up
   document.addEventListener('touchmove', e => { if (!e.target.closest('.log,#tabs,.sr,dialog,#notis')) e.preventDefault() }, { passive: false });
 }
@@ -903,8 +896,9 @@ function startLogin(id) {
     client_id: id, redirect_uri: location.origin + location.pathname,
     response_type: 'token', scope: 'chat:read chat:edit moderator:read:followers user:read:emotes', state, force_verify: 'true'
   });
-  // adding another account: sign out of Twitch in this browser first so Twitch lands on its login screen
-  location.href = accts.length ? 'https://www.twitch.tv/logout?return_to=' + encodeURIComponent(url) : url;
+  // open in a browser tab: going through twitch.tv links gets grabbed by the Twitch app on phones
+  const w = accts.length ? window.open(url, '_blank') : null;
+  if (!w) location.href = url;
 }
 function acctQuick() {
   const r = el('label', 'row'), s = el('select');
@@ -963,7 +957,6 @@ function renderSettings() {
       if (!id) { cid.focus(); return }
       startLogin(id);
     }));
-    if (accts.length) sb.append(el('div', 'note', 'Adding an account starts a fresh session for it. Your other accounts, with their open chats, stay saved here: switch back any time.'));
     const c = chans[cur];
     if (on && c) {
       sb.append(grp('Current channel · #' + c.name));
