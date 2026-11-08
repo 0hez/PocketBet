@@ -1045,11 +1045,22 @@ async function describe(t) {
     const k = t.dataset.k, base = t.title || t.alt || 'Badge';
     if (k == '7tv') { showTip(t, '7TV badge'); const i = t.dataset.bid ? await badgeInfo(t.dataset.bid) : null; if (i && tipFor == t) showTip(t, '7TV badge: ' + (i.tooltip || i.name)); return }
     showTip(t, SRC[k] ? `${base} · ${SRC[k]} badge` : base);
-  } else if (t.dataset.pid) {
-    showTip(t, '7TV paint'); const nm = await paintName(t.dataset.pid); if (nm && tipFor == t) showTip(t, '7TV paint: ' + nm);
+  } else {
+    // any name: hold = what paint it has (tap = user card)
+    let pid = t.dataset.pid;
+    if (!pid) {
+      const uid = t.dataset.uid || seen[t.dataset.login]?.uid;
+      if (!uid) { showTip(t, 'No 7TV paint'); return }
+      showTip(t, 'Checking 7TV…');
+      const st = await sevenUser(uid); if (tipFor != t) return;
+      if (st === undefined) { showTip(t, '7TV not reachable right now'); return }
+      if (!st?.paint_id) { showTip(t, 'No 7TV paint'); return }
+      pid = st.paint_id;
+    }
+    showTip(t, '7TV paint'); const nm = await paintName(pid); if (nm && tipFor == t) showTip(t, '7TV paint: ' + nm);
   }
 }
-const lpTarget = e => e.target.closest?.('.b,.nm[data-pid],.mn[data-pid]');
+const lpTarget = e => e.target.closest?.('.b,.nm,.mn');
 document.addEventListener('pointerdown', e => {
   noClick = 0; hideTip(); clearTimeout(lp?.id); lp = null;
   if (!cfg.tips || e.button > 0) return;
