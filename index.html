@@ -11,6 +11,7 @@
 :root[data-theme=light]{color-scheme:light;--bg:#fff;--fg:#0e0e10;--card:#f4f4f5;--line:#d4d4d8;--rowline:#e4e4e7;--alt:#f6f6f8;--chip:#e9e9ee;--mut:#6b6b75}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;overflow:hidden}
+html{background:var(--bg)}
 body{position:fixed;top:0;left:0;right:0;display:flex;will-change:height,transform;flex-direction:column;height:100dvh;background:var(--bg);color:var(--fg);font:var(--fs)/1.5 var(--ff);padding-top:env(safe-area-inset-top)}
 header,form{display:flex;gap:6px;padding:8px}
 form{padding-bottom:4px}
@@ -37,6 +38,8 @@ button.sec{background:var(--chip);color:var(--fg)}
 #chat{position:relative;flex:1;min-height:0;overflow:hidden;touch-action:pan-y}
 #empty{position:absolute;inset:0;display:none;place-items:center;text-align:center;color:var(--mut)}
 #chat.empty #empty{display:grid}
+.mch{color:var(--p);font-size:.87em}
+.log[data-empty]:empty::after{content:attr(data-empty);margin:auto;color:var(--mut)}
 #jump{position:absolute;left:50%;bottom:10px;z-index:5;width:40px;height:40px;min-height:0;padding:0;border-radius:50%;font-size:20px;line-height:1;box-shadow:0 4px 14px #0009;transform:translate(-50%,12px);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s}
 #jump.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
 .log{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;padding:0 10px;display:flex;flex-direction:column;visibility:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;will-change:transform}
@@ -249,7 +252,7 @@ function connect() {
     ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
     ws.send('PASS ' + (can ? (auth.t.startsWith('oauth:') ? auth.t : 'oauth:' + auth.t) : 'SCHMOOPIIE'));
     ws.send('NICK ' + (can ? auth.u.toLowerCase() : 'justinfan' + (10000 + Math.random() * 80000 | 0)));
-    for (const n in chans) ws.send('JOIN #' + n);
+    for (const n in chans) if (n[0] != '@') ws.send('JOIN #' + n);
   };
   ws.onmessage = e => {
     for (const l of e.data.split('\r\n')) {
@@ -275,7 +278,7 @@ function onIrc(m) {
   }
   const c = chans[(m.params[0] || '').replace('#', '')];
   if (!c) return;
-  if (m.cmd == 'PRIVMSG') { if (!muted(m)) { mention(c, m); push(c, mkMsg(m, c)) } }
+  if (m.cmd == 'PRIVMSG') { if (!muted(m)) { if (isMention(m)) addMention(c, m); push(c, mkMsg(m, c)) } }
   else if (m.cmd == 'ROOMSTATE') {
     if ('slow' in m.tags) c.slow = +m.tags.slow || 0;
     if (!c.room && m.tags['room-id']) load(c, m.tags['room-id']);
@@ -291,9 +294,10 @@ function onIrc(m) {
 function mkMsg(m, c, hist) {
   let text = m.trailing || '', action = false;
   if (text.startsWith('\x01ACTION ')) { action = true; text = text.slice(8).replace(/\x01/g, '') }
+  text = text.replace(/[\u{E0000}-\u{E007F}]/gu, '').trimEnd(); // invisible characters used to bypass the duplicate block
   const d = document.createElement('div');
   d.className = 'm' + (hist ? ' h' : '');
-  const img = (url, cls, parent, title, bg) => { const i = new Image(); i.src = url; i.className = cls; i.loading = 'lazy'; i.title = i.alt = title || ''; if (bg) { i.style.backgroundColor = bg; i.style.borderRadius = '4px' } i.onerror = () => i.remove(); i.onload = () => { if (c.pin) toBottom(c) }; parent.append(i) };
+  const img = (url, cls, parent, title, bg) => { const i = new Image(); i.src = url; i.className = cls; i.title = i.alt = title || ''; if (bg) { i.style.backgroundColor = bg; i.style.borderRadius = '4px' } i.onerror = () => i.remove(); i.onload = () => { if (c.pin) toBottom(c) }; parent.append(i) };
   if (cfg.hl && auth.u && (m.nick || '').toLowerCase() != auth.u.toLowerCase() &&
       new RegExp('(^|\\W)@?' + auth.u.replace(/\W/g, '') + '(?!\\w)', 'i').test(text)) d.classList.add('hl');
 
@@ -328,9 +332,10 @@ function mkMsg(m, c, hist) {
   // emote = <span class="em" data-t="word"><img></span>; CSS swaps it for the text when emotes are turned off
   const emote = (url, word, tp) => {
     const s = document.createElement('span'); s.className = 'em' + (tp ? ' tp' : ''); s.dataset.t = word;
-    const i = new Image(); i.src = url; i.className = 'e'; i.alt = word; i.loading = 'lazy';
+    const i = new Image(); i.src = url; i.className = 'e'; i.alt = word;
     i.onload = () => { if (c.pin) toBottom(c) };
-    i.onerror = () => { s.classList.add('x'); s.textContent = word };
+    let tries = 0;
+    i.onerror = () => { if (tries++ < 2) setTimeout(() => { i.src = url + (url.includes('?') ? '&' : '?') + 'r=' + tries }, 600 * tries); else { s.classList.add('x'); s.textContent = word } };
     s.append(i); root.append(s);
   };
 
@@ -379,7 +384,23 @@ function sys(c, text) {
 // ---------- @mention alerts: banner + sound ----------
 let customSnd = store.get('snd', null), actx = null, lastAlert = 0;
 const audioCtx = () => actx ||= new (window.AudioContext || window.webkitAudioContext)();
-for (const t of ['pointerdown', 'keydown']) addEventListener(t, () => { try { const c = audioCtx(); if (c.state == 'suspended') c.resume() } catch {} }, { once: true, capture: true });
+// iOS only lets audio play after it was started inside a tap, and mutes Web Audio with the silent switch,
+// so alert sounds are rendered to small WAV files and played through one unlocked <audio> element.
+const sndEl = new Audio(); sndEl.preload = 'auto';
+let unlocked = false;
+const SILENT = (() => { // 0.1s of silence as a real WAV file
+  const n = 2205, v = new DataView(new ArrayBuffer(44 + n * 2)), w4 = (o, x) => { for (let i = 0; i < 4; i++) v.setUint8(o + i, x.charCodeAt(i)) };
+  w4(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w4(8, 'WAVE'); w4(12, 'fmt '); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 22050, true); v.setUint32(28, 44100, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true); w4(36, 'data'); v.setUint32(40, n * 2, true);
+  return URL.createObjectURL(new Blob([v], { type: 'audio/wav' }));
+})();
+const unlock = () => {
+  if (unlocked) return;
+  try { const c = audioCtx(); if (c.state == 'suspended') c.resume() } catch {}
+  try { sndEl.src = SILENT; const p = sndEl.play(); if (p) p.then(() => { unlocked = true; sndEl.pause() }).catch(() => {}); else unlocked = true } catch {}
+};
+for (const t of ['touchend', 'click', 'keydown', 'pointerup']) addEventListener(t, unlock, { capture: true });
 const TONES = {
   ding: [[880, 0, .25, 'sine'], [1320, .08, .4, 'sine']],
   chime: [[659, 0, .25, 'sine'], [784, .13, .25, 'sine'], [988, .26, .5, 'sine']],
@@ -389,10 +410,29 @@ const TONES = {
   coin: [[988, 0, .08, 'square'], [1319, .08, .35, 'square']],
   alert: [[740, 0, .16, 'sawtooth'], [740, .22, .16, 'sawtooth'], [988, .44, .25, 'sawtooth']]
 };
-function playSound() {
-  const v = cfg.vol / 100; if (cfg.sound == 'none' || !v) return;
+const wavCache = {};
+function toneWav(name, vol) {
+  const key = name + '|' + vol; if (wavCache[key]) return wavCache[key];
+  const T = TONES[TONES[name] ? name : 'ding'], sr = 22050;
+  const len = Math.ceil((Math.max(...T.map(x => x[1] + x[2])) + .05) * sr), buf = new Float32Array(len);
+  for (const [f, st, d, type] of T) {
+    const peak = (type == 'sine' || type == 'triangle' ? .5 : .25) * vol, i0 = Math.floor(st * sr), n = Math.floor(d * sr);
+    for (let i = 0; i < n && i0 + i < len; i++) {
+      const t = i / sr, ph = (t * f) % 1;
+      const w = type == 'sine' ? Math.sin(2 * Math.PI * f * t) : type == 'square' ? (ph < .5 ? 1 : -1) : type == 'sawtooth' ? 2 * ph - 1 : 4 * Math.abs(ph - .5) - 1;
+      const env = t < .01 ? t / .01 : Math.pow(.0001 / 1, (t - .01) / Math.max(.01, d - .01)) ;
+      buf[i0 + i] += w * peak * Math.min(1, env) * (t > d - .01 ? Math.max(0, (d - t) / .01) : 1);
+    }
+  }
+  const bytes = new DataView(new ArrayBuffer(44 + len * 2)), w4 = (o, x) => { for (let i = 0; i < 4; i++) bytes.setUint8(o + i, x.charCodeAt(i)) };
+  w4(0, 'RIFF'); bytes.setUint32(4, 36 + len * 2, true); w4(8, 'WAVE'); w4(12, 'fmt '); bytes.setUint32(16, 16, true);
+  bytes.setUint16(20, 1, true); bytes.setUint16(22, 1, true); bytes.setUint32(24, sr, true); bytes.setUint32(28, sr * 2, true);
+  bytes.setUint16(32, 2, true); bytes.setUint16(34, 16, true); w4(36, 'data'); bytes.setUint32(40, len * 2, true);
+  for (let i = 0; i < len; i++) bytes.setInt16(44 + i * 2, Math.max(-1, Math.min(1, buf[i])) * 32767, true);
+  return wavCache[key] = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+}
+function playWebAudio(v) {
   try {
-    if (cfg.sound == 'custom' && customSnd?.data) { const a = new Audio(customSnd.data); a.volume = v; a.play().catch(() => {}); return }
     const ctx = audioCtx(); if (ctx.state == 'suspended') ctx.resume();
     const t0 = ctx.currentTime;
     for (const [f, st, d, type] of TONES[TONES[cfg.sound] ? cfg.sound : 'ding']) {
@@ -403,27 +443,76 @@ function playSound() {
     }
   } catch {}
 }
+function playSound() {
+  const v = cfg.vol / 100; if (cfg.sound == 'none' || !v) return;
+  try {
+    sndEl.src = cfg.sound == 'custom' && customSnd?.data ? customSnd.data : toneWav(cfg.sound, v);
+    sndEl.volume = v; sndEl.currentTime = 0;
+    const p = sndEl.play(); if (p) p.catch(() => playWebAudio(v));
+  } catch { playWebAudio(v) }
+}
 function banner(c, who, text) {
   const box = $('#notis'), d = document.createElement('div'); d.className = 'noti';
   const h = document.createElement('b'); h.textContent = `@ ${who} · #${c.name}`;
   const t = document.createElement('div'); t.textContent = text.slice(0, 160);
   d.append(h, t);
   d.onclick = () => { if (chans[c.name]) show(c.name); d.remove() };
-  box.prepend(d);
-  while (box.children.length > 3) box.lastChild.remove();
+  box.replaceChildren(d); // one at a time
   setTimeout(() => d.remove(), cfg.bdur * 1000);
 }
-function mention(c, m) {
-  if (!cfg.noti || !auth.u || (m.nick || '').toLowerCase() == auth.u.toLowerCase()) return;
-  let text = m.trailing || '';
-  if (text.startsWith('\x01ACTION ')) text = text.slice(8).replace(/\x01/g, '');
-  if (!new RegExp('(^|\\W)@' + auth.u.replace(/\W/g, '') + '(?!\\w)', 'i').test(text)) return;
-  const now = Date.now(), quiet = now - lastAlert < 700; lastAlert = now; // avoid machine-gun sounds
-  const who = m.tags['display-name'] || m.nick;
-  if (!quiet) playSound();
-  if (cfg.banner) banner(c, who, text);
-  if (cfg.sysnoti && document.hidden) try { if (Notification.permission == 'granted') new Notification(`${who} mentioned you in #${c.name}`, { body: text }) } catch {}
+// alerts are queued: one at a time, at least 3.5 seconds apart
+const alertQ = []; let alertTimer = 0;
+function runAlert() {
+  const a = alertQ.shift();
+  if (!a) { alertTimer = 0; return }
+  alertTimer = setTimeout(runAlert, 3500);
+  playSound();
+  if (cfg.banner) banner(a.c, a.who, a.text);
+  if (cfg.sysnoti && document.hidden) try { if (Notification.permission == 'granted') new Notification(`${a.who} mentioned you in #${a.c.name}`, { body: a.text }) } catch {}
 }
+const plain = m => { let t = m.trailing || ''; if (t.startsWith('\x01ACTION ')) t = t.slice(8).replace(/\x01/g, ''); return t.replace(/[\u{E0000}-\u{E007F}]/gu, '') };
+function isMention(m) {
+  if (!auth.u || (m.nick || '').toLowerCase() == auth.u.toLowerCase()) return false;
+  if ((m.tags['reply-parent-user-login'] || '').toLowerCase() == auth.u.toLowerCase()) return true;
+  return new RegExp('(^|\\W)@?' + auth.u.replace(/\W/g, '') + '(?!\\w)', 'i').test(plain(m));
+}
+// ---------- Mentions tab ----------
+let mUnread = 0;
+const MKEY = () => 'men:' + (auth.u || 'guest');
+function ensureMentions() {
+  if (!chans['@mentions']) { const c = mkLog('@mentions'); c.el.dataset.empty = 'No mentions yet'; chans['@mentions'] = c }
+  return chans['@mentions'];
+}
+function saveMentions() {
+  const c = chans['@mentions']; if (!c) return;
+  store.set(MKEY(), [...c.el.children].slice(-100).map(x => x.outerHTML));
+}
+function restoreMentions() {
+  const c = ensureMentions(); c.el.replaceChildren(); mUnread = 0;
+  c.el.insertAdjacentHTML('beforeend', store.get(MKEY(), []).join(''));
+  c.pin = true; toBottom(c);
+}
+let saveMt = 0;
+function addMention(c, m) {
+  const log = ensureMentions(), el = mkMsg(m, c);
+  el.dataset.ch = c.name;
+  const tag = document.createElement('b'); tag.className = 'mch'; tag.textContent = '#' + c.name + ' ';
+  el.prepend(tag);
+  log.el.append(el);
+  while (log.el.children.length > 200) log.el.firstChild.remove();
+  if (log.pin) toBottom(log);
+  if (cur != '@mentions') { mUnread++; tabs() }
+  clearTimeout(saveMt); saveMt = setTimeout(saveMentions, 3000); // after name paints / badges have loaded
+  if (cfg.noti) {
+    alertQ.push({ c, who: m.tags['display-name'] || m.nick, text: plain(m) });
+    if (alertQ.length > 15) alertQ.shift();
+    if (!alertTimer) runAlert();
+  }
+}
+$('#chat').addEventListener('click', e => { // tap a mention to jump to that chat
+  const r = e.target.closest('.m'); if (!r || cur != '@mentions' || e.target.closest('.nm')) return;
+  const ch = r.dataset.ch; if (ch && chans[ch]) show(ch);
+});
 
 // ---------- per-channel assets + chat history ----------
 async function load(c, room) {
@@ -449,13 +538,16 @@ async function load(c, room) {
 
 // ---------- sessions: every account keeps its own open chats ----------
 const sKey = () => (auth.u || 'guest');
-const saveChs = () => { store.set('chs:' + sKey(), Object.keys(chans)); store.set('cur:' + sKey(), cur) };
+const real = () => Object.keys(chans).filter(k => k[0] != '@');
+const order = () => ['@mentions', ...real()];
+const saveChs = () => { store.set('chs:' + sKey(), real()); store.set('cur:' + sKey(), cur) };
 function teardown() {
-  for (const k in chans) { chans[k].ro?.disconnect(); chans[k].el.remove(); delete chans[k] }
-  cur = null; tabs();
+  for (const k of real()) { chans[k].ro?.disconnect(); chans[k].el.remove(); delete chans[k] }
+  cur = null; mUnread = 0; tabs();
 }
 function loadSession() {
   const list = store.get('chs:' + sKey(), []), want = store.get('cur:' + sKey(), null);
+  restoreMentions();
   for (const n of list) open(n);
   if (want && chans[want]) show(want); else tabs();
 }
@@ -464,11 +556,12 @@ function loadSession() {
 function tabs(center) {
   const t = $('#tabs'), keep = t.scrollLeft; t.innerHTML = '';
   let act = null;
-  for (const n in chans) {
-    const b = document.createElement('button');
-    b.textContent = n + (n == cur ? ' ✕' : '');
-    b.className = (n == cur ? 'on ' : '') + (chans[n].unread ? 'new' : '');
-    b.onclick = () => n == cur ? close(n) : show(n);
+  for (const n of order()) {
+    if (!chans[n]) continue;
+    const b = document.createElement('button'), mt = n[0] == '@';
+    b.textContent = mt ? '@' + (mUnread ? ' ' + mUnread : '') : n + (n == cur ? ' ✕' : '');
+    b.className = (n == cur ? 'on ' : '') + ((mt ? mUnread : chans[n].unread) ? 'new' : '');
+    b.onclick = () => n == cur ? (mt || close(n)) : show(n);
     if (n == cur) act = b;
     t.append(b);
   }
@@ -479,34 +572,39 @@ function tabs(center) {
 function show(n) {
   const c = chans[n]; if (!c) return;
   cur = n; c.unread = false; $('#sug').classList.remove('on');
+  if (n[0] == '@') mUnread = 0;
   for (const k in chans) chans[k].el.classList.toggle('on', k == n);
-  $('#in').placeholder = 'Message #' + n + (auth.u ? ' as ' + auth.u : '');
+  $('#in').placeholder = n[0] == '@' ? 'Mentions (open a chat to reply)' : 'Message #' + n + (auth.u ? ' as ' + auth.u : '');
   saveChs(); tabs(true);
   if (c.pin) toBottom(c);
   updJump();
 }
 function close(n) {
   if (ws && ws.readyState == 1) ws.send('PART #' + n);
-  const names = Object.keys(chans), i = names.indexOf(n);
+  const names = real(), i = names.indexOf(n);
   chans[n].ro?.disconnect(); chans[n].el.remove(); delete chans[n];
-  const rest = Object.keys(chans);
-  if (rest.length) show(rest[Math.min(i, rest.length - 1)]); else { cur = null; saveChs(); tabs() }
+  const rest = real();
+  if (rest.length) show(rest[Math.min(i, rest.length - 1)]); else { cur = null; saveChs(); tabs(); updJump() }
 }
 $('#jump').onclick = () => { const c = chans[cur]; if (!c) return; c.pin = true; c.el.scrollTo({ top: c.el.scrollHeight, behavior: 'smooth' }); c.prog = performance.now() + 600; updJump() };
+function mkLog(name) {
+  const el = document.createElement('div'); el.className = 'log';
+  $('#chat').append(el);
+  const c = { name, el, badges: {}, emotes: {}, tw: {}, room: null, slow: 0, users: {}, pin: true, prog: 0 };
+  el.addEventListener('scroll', () => {
+    if (performance.now() - c.prog < 150) return; // our own scroll-to-bottom
+    c.pin = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    if (cur == c.name) updJump();
+  }, { passive: true });
+  // whenever the box changes size (keyboard, suggestions bar, rotation) and the user is at the bottom, stay at the bottom
+  c.ro = new ResizeObserver(() => { if (c.pin) toBottom(c) });
+  c.ro.observe(el);
+  return c;
+}
 function open(name) {
-  name = name.trim().toLowerCase().replace('#', ''); if (!name) return;
+  name = name.trim().toLowerCase().replace('#', ''); if (!name || name[0] == '@') return;
   if (!chans[name]) {
-    const el = document.createElement('div'); el.className = 'log';
-    $('#chat').append(el);
-    const c = chans[name] = { name, el, badges: {}, emotes: {}, tw: {}, room: null, slow: 0, users: {}, pin: true, prog: 0 };
-    el.addEventListener('scroll', () => {
-      if (performance.now() - c.prog < 150) return; // our own scroll-to-bottom
-      c.pin = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-      if (cur == c.name) updJump();
-    }, { passive: true });
-    // whenever the box changes size (keyboard, suggestions bar, rotation) and the user is at the bottom, stay at the bottom
-    c.ro = new ResizeObserver(() => { if (c.pin) toBottom(c) });
-    c.ro.observe(el);
+    chans[name] = mkLog(name);
     saveChs();
     if (ws && ws.readyState == 1) ws.send('JOIN #' + name);
   }
@@ -549,7 +647,7 @@ let spam = null, blockSubmit = 0;
 const sendBtn = $('#send');
 function startSpam() {
   const c = chans[cur], text = $('#in').value.trim().slice(0, 500);
-  if (!c || !text || !(auth.u && auth.t) || spam) return false;
+  if (!c || cur[0] == '@' || !text || !(auth.u && auth.t) || spam) return false;
   const s = spam = { n: 0, stop: false };
   sendBtn.classList.add('hot'); sendBtn.textContent = '×0';
   (async () => {
@@ -583,25 +681,32 @@ function startSpam() {
 $('#f').onsubmit = e => {
   e.preventDefault();
   if (Date.now() < blockSubmit) return;
-  const text = $('#in').value.trim().slice(0, 500); if (!text || !cur) return;
+  const text = $('#in').value.trim().slice(0, 500); if (!text || !cur || cur[0] == '@') return;
   if (!(auth.u && auth.t)) { openSettings('Account'); return }
   const c = chans[cur], w = waitFor(c);
   if (w > 0) { sys(c, `Rate limit: wait ${(w / 1000).toFixed(1)}s before sending.`); return }
   if (sendMsg(c, text)) $('#in').value = '';
 };
 
-// ---------- keyboard: follow the real visual viewport every frame (no guessing, no CSS animation) ----------
+// ---------- keyboard: opening follows the real viewport; closing glides down on its own ----------
 {
   const vv = window.visualViewport, body = document.body, inp = $('#in');
-  let polling = 0, stopAt = 0;
-  const apply = () => {
-    if (!vv) return;
-    const h = Math.round(vv.height), top = Math.round(vv.offsetTop * 100) / 100;
+  let polling = 0, stopAt = 0, closing = null;
+  const setBody = (h, top) => {
+    h = Math.round(h); top = Math.round(top * 100) / 100;
     if (body._h !== h) { body._h = h; body.style.height = h + 'px' }
     if (body._t !== top) { body._t = top; body.style.transform = top > .5 ? `translate3d(0,${top}px,0)` : '' }
+  };
+  const apply = () => {
+    if (!vv) return;
+    if (closing) {
+      if (closing.anim) return;
+      // after the glide: wait until the viewport confirms the keyboard is gone, so it can't shrink the page again
+      if (performance.now() > closing.until || vv.height >= innerHeight - 1) closing = null; else return;
+    }
+    setBody(vv.height, vv.offsetTop);
     if (window.scrollY) scrollTo(0, 0);
   };
-  // iOS reports the viewport progressively while the keyboard slides: sample it every frame for a moment
   const poll = ms => {
     stopAt = Math.max(stopAt, performance.now() + ms);
     if (polling) return;
@@ -609,9 +714,21 @@ $('#f').onsubmit = e => {
     const step = () => { apply(); if (performance.now() < stopAt) requestAnimationFrame(step); else polling = 0 };
     requestAnimationFrame(step);
   };
+  function closeKb() {
+    const h0 = body._h || vv.height, t0 = body._t || 0, h1 = innerHeight;
+    if (h0 >= h1 - 2 && !t0) return;
+    const st = closing = { anim: true, until: performance.now() + 900 }, t = performance.now(), D = 260;
+    const step = now => {
+      if (closing !== st) return;
+      const p = Math.min(1, Math.max(0, (now - t) / D)), e = 1 - Math.pow(1 - p, 3);
+      setBody(h0 + (h1 - h0) * e, t0 * (1 - e));
+      if (p < 1) requestAnimationFrame(step); else { st.anim = false; poll(1000) }
+    };
+    requestAnimationFrame(step);
+  }
   if (vv) { vv.addEventListener('resize', () => { apply(); poll(500) }); vv.addEventListener('scroll', apply) }
-  inp.addEventListener('focus', () => { body.classList.add('kb'); apply(); poll(900) });
-  inp.addEventListener('blur', () => { body.classList.remove('kb'); apply(); poll(900) });
+  inp.addEventListener('focus', () => { closing = null; body.classList.add('kb'); apply(); poll(900) });
+  inp.addEventListener('blur', () => { body.classList.remove('kb'); closeKb() });
   addEventListener('scroll', () => { if (window.scrollY) scrollTo(0, 0) });
   // stop iOS from dragging the whole page around while the keyboard is up
   document.addEventListener('touchmove', e => { if (!e.target.closest('.log,#tabs,.sr,dialog,#notis')) e.preventDefault() }, { passive: false });
@@ -624,7 +741,7 @@ $('#f').onsubmit = e => {
   const reset = el => { if (el) { el.classList.remove('peek', 'anim'); el.style.transform = '' } };
   area.addEventListener('pointerdown', e => {
     if (e.pointerType == 'mouse' && e.button) return;
-    names = Object.keys(chans);
+    names = order().filter(k => chans[k]);
     if (names.length < 2 || !chans[cur] || st?.settling) return;
     st = { id: e.pointerId, x: e.clientX, y: e.clientY, lock: null, d: 0, v: 0, lx: e.clientX, lt: performance.now() };
   });
@@ -745,7 +862,7 @@ function ago(iso) { // kept for when followage comes back
   return (y ? y + 'y ' : '') + mo + 'm ' + d + 'd';
 }
 async function openCard(n) {
-  const login = n.dataset.login, uid = n.dataset.uid, ch = cur, sub = n.dataset.sub;
+  const login = n.dataset.login, uid = n.dataset.uid, ch = n.closest('.m')?.dataset.ch || cur, sub = n.dataset.sub;
   const card = $('#card'); card.replaceChildren();
   const row = (label) => {
     const d = document.createElement('div'); d.style.margin = '10px 0';
@@ -758,7 +875,7 @@ async function openCard(n) {
   const nm = document.createElement('b'); nm.textContent = n.textContent; nm.style.cssText = n.style.cssText; nm.style.fontSize = '18px';
   head.append(av, nm); card.append(head);
   const bv = row('Badges'); bv.textContent = '';
-  const bl = [...(n._b?.children || [])];
+  const bl = [...((n._b || n.previousElementSibling)?.children || [])];
   if (bl.length) { bv.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px'; for (const b of bl) { const ch = el('span', 'chip'); ch.append(b.cloneNode(true), el('span', null, b.title || 'Badge')); bv.append(ch) } }
   else bv.textContent = 'None';
   const fol = row('Following since'), sb = row('Subscription'), cr = row('Account created');
@@ -870,7 +987,7 @@ const saveAccts = () => store.set('accts', accts);
 function upsertAcct(a) { accts = accts.filter(x => x.u != a.u); accts.push({ u: a.u, t: a.t, id: a.id }); saveAccts() }
 function setAuth(a) {
   if (spam) spam.stop = true;
-  saveChs(); // park the outgoing account's open chats under its own name
+  saveChs(); saveMentions(); // park the outgoing account's chats and mentions under its own name
   auth = a ? { u: a.u, t: a.t, id: a.id } : {};
   store.set('auth', auth);
   cfg = loadCfg(); applyCfg();
@@ -958,7 +1075,7 @@ function renderSettings() {
       startLogin(id);
     }));
     const c = chans[cur];
-    if (on && c) {
+    if (on && c && c.name[0] != '@') {
       sb.append(grp('Current channel · #' + c.name));
       const lim = limitFor(c);
       sb.append(kv('Your role', c.me ? roleOf(c) : 'Chatter (detecting…)'));
