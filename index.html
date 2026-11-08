@@ -22,9 +22,16 @@ body.kb button{min-height:34px}
 body.kb .m{padding-top:calc(var(--pad)*.35);padding-bottom:calc(var(--pad)*.35)}
 body.kb .m.sys{font-size:.85em}
 #bar{display:flex;flex:none;align-items:center;gap:6px;padding:0 8px 3px}
-#brand{flex:none;text-align:center;font:italic 800 10px/1 var(--ff);letter-spacing:.24em;padding:2px 0 calc(5px + env(safe-area-inset-bottom));user-select:none;-webkit-user-select:none;pointer-events:none}
-#brand span{background:linear-gradient(90deg,var(--p),#ff5fd2 55%,#ffb300);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent}
-#brand i{font-style:normal;color:var(--p);opacity:.75;margin:0 7px;font-size:8px;vertical-align:1px}
+#brand{flex:none;display:flex;align-items:center;justify-content:center;gap:12px;padding:3px 0 calc(6px + env(safe-area-inset-bottom));user-select:none;-webkit-user-select:none;pointer-events:none;--g1:#8f6b2e;--g2:#f6e7b8;--g3:#c9a24f}
+#brand span{font:600 11px/1 var(--ff);letter-spacing:.5em;text-indent:.5em;text-transform:uppercase;background:linear-gradient(100deg,var(--g1) 0%,var(--g2) 25%,var(--g3) 50%,var(--g2) 75%,var(--g1) 100%) 0 0/250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;filter:drop-shadow(0 0 5px rgba(246,231,184,.22));animation:sheen 7s linear infinite}
+#brand i{display:block;position:relative;width:42px;height:1px;background:linear-gradient(90deg,transparent,var(--g3))}
+#brand i:last-child{background:linear-gradient(270deg,transparent,var(--g3))}
+#brand i::after{content:'';position:absolute;top:-2px;right:-1px;width:5px;height:5px;background:var(--g2);transform:rotate(45deg);opacity:.85}
+#brand i:last-child::after{right:auto;left:-1px}
+@keyframes sheen{to{background-position:-250% 0}}
+@media (prefers-reduced-motion:reduce){#brand span{animation:none}}
+:root[data-theme=light] #brand{--g1:#6e4f17;--g2:#b8893a;--g3:#8f6b2e;--x:0}
+:root[data-theme=light] #brand span{filter:none}
 body.kb #brand{display:none}
 input,select{flex:1;min-width:0;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:16px;font-family:inherit}
 button{background:var(--p);color:var(--pt);border:0;border-radius:8px;padding:0 14px;font-size:15px;min-height:40px;font-family:inherit}
@@ -57,7 +64,7 @@ form{padding:6px 8px 2px}
 .log[data-empty]:empty::after{content:attr(data-empty);margin:auto;color:var(--mut)}
 #jump{position:absolute;left:50%;bottom:10px;z-index:5;width:40px;height:40px;min-height:0;padding:0;border-radius:50%;font-size:20px;line-height:1;box-shadow:0 4px 14px #0009;transform:translate(-50%,12px);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s}
 #jump.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
-.log{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;padding:0 10px;display:flex;flex-direction:column;visibility:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;will-change:transform}
+.log{overflow-anchor:none;position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;padding:0 10px;display:flex;flex-direction:column;visibility:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;will-change:transform}
 .log.on,.log.peek{visibility:visible}
 .log.anim{transition:transform .3s cubic-bezier(.22,.8,.3,1)}
 .log>.m:first-child{margin-top:auto}
@@ -69,6 +76,8 @@ form{padding:6px 8px 2px}
 .ts{color:var(--mut);font-size:.87em}
 .nots .ts{display:none}
 .nm{cursor:pointer}
+.mn{cursor:pointer;font-weight:600;color:var(--p);border-radius:4px;padding:0 2px;margin:0 -1px;transition:background-color .15s}
+.mn:hover,.mn:active{background-color:color-mix(in srgb,var(--p) 18%,transparent)}
 .m.h{opacity:.6}
 .b{height:var(--bs);width:var(--bs);vertical-align:middle;margin-right:3px}
 .e{height:var(--es);vertical-align:middle;margin:0 1px}
@@ -122,7 +131,7 @@ dialog::backdrop{background:#0009}
   <button id="men" class="sec" aria-label="Mentions">@</button>
   <button id="cog" aria-label="Settings">⚙</button>
 </nav>
-<div id="brand"><i>✦</i><span>mychats</span><i>✦</i></div>
+<div id="brand"><i></i><span>kervrino</span><i></i></div>
 <div id="notis"></div>
 <dialog id="card"></dialog>
 <dialog id="dlg">
@@ -194,6 +203,7 @@ async function getBadges(kind, room, o) {
   badges(await j(kind == 'g' ? 'https://badges.twitch.tv/v1/badges/global/display' : `https://badges.twitch.tv/v1/badges/channels/${room}/display`), o);
 }
 // 7TV badge per user (looked up once, cached)
+const seen = {}; // login -> { uid, color, n } for every chatter we have seen (so @mentions can show their color / 7TV paint)
 const sevenP = {};
 const sevenUser = uid => sevenP[uid] ||= (async () => {
   for (let t = 0; t < 3; t++) {
@@ -369,7 +379,7 @@ function mkEmote(url, word, tp, c) {
 // messages that arrived before a channel's emote lists finished loading: turn their plain-text emote names into emotes
 function reEmote(c) {
   for (const d of c.el.querySelectorAll('.m:not(.sys)')) {
-    const w = document.createTreeWalker(d, NodeFilter.SHOW_TEXT, { acceptNode: t => t.parentElement.closest('.nm,.ts,.em,.b') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+    const w = document.createTreeWalker(d, NodeFilter.SHOW_TEXT, { acceptNode: t => t.parentElement.closest('.nm,.ts,.em,.b,.mn') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
     const todo = []; for (let t; (t = w.nextNode());) todo.push(t);
     for (const t of todo) {
       const word = t.textContent.trim(); if (!word) continue;
@@ -379,6 +389,14 @@ function reEmote(c) {
   }
 }
 
+// ---------- @mentions inside messages: tappable, with the mentioned user's color / 7TV paint ----------
+function mkMention(name) {
+  const s = document.createElement('span'); s.className = 'mn'; s.textContent = '@' + name; s.dataset.login = name.toLowerCase();
+  const k = seen[name.toLowerCase()];
+  if (k?.color) s.style.color = k.color;
+  if (k?.uid) sevenUser(k.uid).then(async st => { if (st?.paint_id) { const pt = await sevenPaint(st.paint_id); if (pt) paint(s, pt) } });
+  return s;
+}
 // ---------- message rendering ----------
 function mkMsg(m, c, hist) {
   let text = m.trailing || '', action = false;
@@ -410,7 +428,8 @@ function mkMsg(m, c, hist) {
   if (c.users && m.nick) c.users[m.nick.toLowerCase()] = { n: name, t: +m.tags['tmi-sent-ts'] || Date.now() }; // for @ autocomplete
   const color = fixColor(m.tags.color) || hsl(name);
   const n = document.createElement('b'); n.textContent = name; n.style.color = color;
-  n._b = bs; n.className = 'nm'; n.dataset.login = m.nick || ''; n.dataset.uid = uid || '';
+  n._b = bs; n.className = 'nm'; n.dataset.login = m.nick || ''; n.dataset.uid = uid || ''; n.dataset.color = color;
+  if (m.nick) seen[m.nick.toLowerCase()] = { uid: uid || (seen[m.nick.toLowerCase()]?.uid || ''), color, n: name };
   const bi = (m.tags['badge-info'] || '').split(',').find(x => /^(subscriber|founder)\//.test(x));
   n.dataset.sub = bi ? bi.split('/')[1] : '';
   d.append(n, action ? ' ' : ': ');
@@ -436,7 +455,10 @@ function mkMsg(m, c, hist) {
     w.forEach((word, i) => {
       const sp = i < w.length - 1 ? ' ' : '';
       const u = c.emotes[word] || G.emotes[word] || (m.echo && (c.tw[word] || G.tw[word]));
-      if (u) { emote(u, word, true); root.append(sp) } else root.append(word + sp);
+      const mm = !u && /^@(\w{1,25})(\W*)$/.exec(word);
+      if (u) { emote(u, word, true); root.append(sp) }
+      else if (mm) { shown = true; root.append(mkMention(mm[1]), mm[2] + sp) }
+      else root.append(word + sp);
     });
     buf = '';
   };
@@ -532,7 +554,7 @@ function addMention(c, m) {
   }
 }
 $('#chat').addEventListener('click', e => { // tap a mention to jump to that chat
-  const r = e.target.closest('.m'); if (!r || cur != '@mentions' || e.target.closest('.nm')) return;
+  const r = e.target.closest('.m'); if (!r || cur != '@mentions' || e.target.closest('.nm,.mn')) return;
   const ch = r.dataset.ch; if (ch && chans[ch]) show(ch);
 });
 
@@ -892,7 +914,20 @@ $('#men').onclick = () => { ensureMentions(); if (cur != '@mentions') show('@men
 $('#add').onclick = () => { const n = prompt('Channel name'); if (n) openChan(n) };
 
 // ---------- user card (tap a name) ----------
-$('#chat').addEventListener('click', e => { const n = e.target.closest('.nm'); if (n) openCard(n) });
+$('#chat').addEventListener('click', e => {
+  const n = e.target.closest('.nm'); if (n) return openCard(n);
+  const mn = e.target.closest('.mn'); if (mn) openMention(mn);
+});
+function openMention(s) {
+  const login = s.dataset.login, ch = s.closest('.m')?.dataset.ch || cur, log = chans[ch]?.el;
+  let nm = null; // reuse their latest message in this chat so badges + sub info come along
+  if (log) for (let i = log.children.length - 1; i >= 0 && !nm; i--) { const x = log.children[i].querySelector(':scope>.nm'); if (x && (x.dataset.login || '').toLowerCase() == login) nm = x }
+  if (!nm) {
+    const k = seen[login];
+    nm = el('b', 'nm', k?.n || s.textContent.slice(1)); nm.dataset.login = login; nm.dataset.uid = k?.uid || ''; nm.dataset.sub = ''; nm.dataset.color = k?.color || ''; nm._b = el('span');
+  }
+  openCard(nm, ch);
+}
 const dateStr = iso => new Date(iso).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
 function ago(iso) { // kept for when followage comes back
   const a = new Date(iso), b = new Date();
@@ -901,8 +936,8 @@ function ago(iso) { // kept for when followage comes back
   if (mo < 0) { y--; mo += 12 }
   return (y ? y + 'y ' : '') + mo + 'm ' + d + 'd';
 }
-async function openCard(n) {
-  const login = n.dataset.login, uid = n.dataset.uid, ch = n.closest('.m')?.dataset.ch || cur, sub = n.dataset.sub;
+async function openCard(n, chOv) {
+  const login = n.dataset.login, uid = n.dataset.uid, ch = chOv || n.closest('.m')?.dataset.ch || cur, sub = n.dataset.sub;
   const card = $('#card'); card.replaceChildren();
   const row = (label) => {
     const d = document.createElement('div'); d.style.margin = '10px 0';
@@ -912,7 +947,11 @@ async function openCard(n) {
   };
   const head = document.createElement('div'); head.style.cssText = 'display:flex;align-items:center;gap:10px';
   const av = new Image(); av.style.cssText = 'width:56px;height:56px;border-radius:50%;background:var(--chip)'; av.onerror = () => av.removeAttribute('src');
-  const nm = document.createElement('b'); nm.textContent = n.textContent; nm.style.cssText = n.style.cssText; nm.style.fontSize = '18px';
+  const nm = document.createElement('b'); nm.textContent = n.textContent; nm.style.fontSize = '18px';
+  const base = n.dataset.color || (n.style.color && n.style.color != 'transparent' ? n.style.color : ''); if (base) nm.style.color = base;
+  let painted = false;
+  const addPaint = id => { if (painted || !id) return; painted = true; sevenUser(id).then(async st => { if (st?.paint_id) { const pt = await sevenPaint(st.paint_id); if (pt) paint(nm, pt) } }) };
+  addPaint(uid);
   head.append(av, nm); card.append(head);
   const bv = row('Badges'); bv.textContent = '';
   const bl = [...((n._b || n.previousElementSibling)?.children || [])];
@@ -935,11 +974,12 @@ async function openCard(n) {
   fol.textContent = 'N/A'; // followage disabled for now
 
   const [hu, iv, sa] = await Promise.all([
-    uid ? hx('https://api.twitch.tv/helix/users?id=' + uid) : null,
+    uid ? hx('https://api.twitch.tv/helix/users?id=' + uid) : login ? hx('https://api.twitch.tv/helix/users?login=' + encodeURIComponent(login)) : null,
     j('https://api.ivr.fi/v2/twitch/user?login=' + encodeURIComponent(login)),
     ch && login != ch ? j(`https://api.ivr.fi/v2/twitch/subage/${encodeURIComponent(login)}/${encodeURIComponent(ch)}`) : null
   ]);
   const u = hu?.data?.[0], i0 = Array.isArray(iv) ? iv[0] : null;
+  addPaint(uid || u?.id || i0?.id); // mentioned users we never saw chat: look their paint up now
   const created = u?.created_at || i0?.createdAt;
   const avatar = u?.profile_image_url || i0?.logo;
   if (avatar) av.src = avatar;
