@@ -1084,7 +1084,7 @@ async function loadMine() {
       // coming in, a one-frame still of the same emote is drawn behind it, so there is never an empty box.
       const base = seven7[1], anims = [base + '1x.webp', base + '2x.webp', base + '2x.png']; let ai = 0;
       const ready = () => { if (!im._ready) { im._ready = true; im.dispatchEvent(new Event('ready')) } };
-      im.onload = ready;
+      im.onload = () => { im.style.background = 'none'; im.style.width = ''; ready() }; // the animation is here: drop the still behind it (it showed through see-through emotes and looked frozen)
       im.onerror = () => { if (++ai < anims.length) im.src = anims[ai]; else { im.removeAttribute('src'); if (!im._still) { prevCache.delete(k); im.onDead?.() } } };
       const still = new Image();
       still.onload = () => {
