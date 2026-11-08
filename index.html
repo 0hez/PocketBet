@@ -212,20 +212,29 @@ async function loadGlobals() {
 
 // Twitch's own emotes (for the emote picker): global + everything this account can use
 const twUrl = id => `https://static-cdn.jtvnw.net/emoticons/v2/${id}/default/dark/2.0`;
+let twWarned = false;
 async function loadTwEmotes() {
-  const tok = auth.t, out = {};
+  const tok = auth.t, out = {}, ids = {}, ck = 'twemo:' + (auth.u || 'guest');
   if (!tok) { G.tw = out; return }
+  for (const [k, id] of Object.entries(store.get(ck, {}))) out[k] = twUrl(id); // instant: last known list
+  G.tw = out;
   const g = await hx('https://api.twitch.tv/helix/chat/emotes/global');
   for (const e of g?.data || []) out[e.name] = twUrl(e.id);
-  G.tw = out;
   if (!auth.id) return;
-  let after = '';
-  for (let i = 0; i < 40 && auth.t == tok; i++) { // needs the user:read:emotes scope (log in again to get it)
-    const d = await hx(`https://api.twitch.tv/helix/chat/emotes/user?user_id=${auth.id}` + (after ? '&after=' + after : ''));
+  const v = await validate(tok);
+  if (v && Array.isArray(v.scopes) && !v.scopes.includes('user:read:emotes') && !twWarned) {
+    twWarned = true;
+    const c = chans[cur]; if (c && c.name[0] != '@') sys(c, 'Subscriber emotes need a new login: Settings > Account > Add account, and log in again to allow emote access.');
+  }
+  let after = '', got = 0;
+  for (let i = 0; i < 150 && auth.t == tok; i++) {
+    let d = await hx(`https://api.twitch.tv/helix/chat/emotes/user?user_id=${auth.id}` + (after ? '&after=' + after : ''));
+    if (!d) { await sleep(800); d = await hx(`https://api.twitch.tv/helix/chat/emotes/user?user_id=${auth.id}` + (after ? '&after=' + after : '')) } // one retry
     if (!d?.data) break;
-    for (const e of d.data) out[e.name] = twUrl(e.id);
+    for (const e of d.data) { out[e.name] = twUrl(e.id); ids[e.name] = e.id; got++ }
     after = d.pagination?.cursor; if (!after) break;
   }
+  if (got && auth.t == tok) store.set(ck, ids);
 }
 
 // ---------- IRC ----------
@@ -395,23 +404,11 @@ function sys(c, text) {
 // ---------- @mention alerts: banner + sound ----------
 let customSnd = store.get('snd', null), actx = null, lastAlert = 0;
 const audioCtx = () => actx ||= new (window.AudioContext || window.webkitAudioContext)();
-// iOS only lets audio play after it was started inside a tap, and mutes Web Audio with the silent switch,
-// so alert sounds are rendered to small WAV files and played through one unlocked <audio> element.
-const sndEl = new Audio(); sndEl.preload = 'auto';
-let unlocked = false;
-const SILENT = (() => { // 0.1s of silence as a real WAV file
-  const n = 2205, v = new DataView(new ArrayBuffer(44 + n * 2)), w4 = (o, x) => { for (let i = 0; i < 4; i++) v.setUint8(o + i, x.charCodeAt(i)) };
-  w4(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w4(8, 'WAVE'); w4(12, 'fmt '); v.setUint32(16, 16, true);
-  v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 22050, true); v.setUint32(28, 44100, true);
-  v.setUint16(32, 2, true); v.setUint16(34, 16, true); w4(36, 'data'); v.setUint32(40, n * 2, true);
-  return URL.createObjectURL(new Blob([v], { type: 'audio/wav' }));
-})();
-const unlock = () => {
-  if (unlocked) return;
-  try { const c = audioCtx(); if (c.state == 'suspended') c.resume() } catch {}
-  try { sndEl.src = SILENT; const p = sndEl.play(); if (p) p.then(() => { unlocked = true; sndEl.pause() }).catch(() => {}); else unlocked = true } catch {}
-};
-for (const t of ['touchend', 'click', 'keydown', 'pointerup']) addEventListener(t, unlock, { capture: true });
+// Alert sounds use Web Audio only and an "ambient" audio session, so they mix with whatever is already playing.
+// (Playing through an <audio> element makes iOS pause videos and music in other apps.)
+try { if (navigator.audioSession) navigator.audioSession.type = 'ambient' } catch {}
+const unlock = () => { try { const c = audioCtx(); if (c.state != 'running') c.resume() } catch {} };
+for (const t of ['touchend', 'click', 'keydown']) addEventListener(t, unlock, { capture: true });
 const TONES = {
   ding: [[880, 0, .25, 'sine'], [1320, .08, .4, 'sine']],
   chime: [[659, 0, .25, 'sine'], [784, .13, .25, 'sine'], [988, .26, .5, 'sine']],
@@ -421,46 +418,29 @@ const TONES = {
   coin: [[988, 0, .08, 'square'], [1319, .08, .35, 'square']],
   alert: [[740, 0, .16, 'sawtooth'], [740, .22, .16, 'sawtooth'], [988, .44, .25, 'sawtooth']]
 };
-const wavCache = {};
-function toneWav(name, vol) {
-  const key = name + '|' + vol; if (wavCache[key]) return wavCache[key];
-  const T = TONES[TONES[name] ? name : 'ding'], sr = 22050;
-  const len = Math.ceil((Math.max(...T.map(x => x[1] + x[2])) + .05) * sr), buf = new Float32Array(len);
-  for (const [f, st, d, type] of T) {
-    const peak = (type == 'sine' || type == 'triangle' ? .5 : .25) * vol, i0 = Math.floor(st * sr), n = Math.floor(d * sr);
-    for (let i = 0; i < n && i0 + i < len; i++) {
-      const t = i / sr, ph = (t * f) % 1;
-      const w = type == 'sine' ? Math.sin(2 * Math.PI * f * t) : type == 'square' ? (ph < .5 ? 1 : -1) : type == 'sawtooth' ? 2 * ph - 1 : 4 * Math.abs(ph - .5) - 1;
-      const env = t < .01 ? t / .01 : Math.pow(.0001 / 1, (t - .01) / Math.max(.01, d - .01)) ;
-      buf[i0 + i] += w * peak * Math.min(1, env) * (t > d - .01 ? Math.max(0, (d - t) / .01) : 1);
-    }
-  }
-  const bytes = new DataView(new ArrayBuffer(44 + len * 2)), w4 = (o, x) => { for (let i = 0; i < 4; i++) bytes.setUint8(o + i, x.charCodeAt(i)) };
-  w4(0, 'RIFF'); bytes.setUint32(4, 36 + len * 2, true); w4(8, 'WAVE'); w4(12, 'fmt '); bytes.setUint32(16, 16, true);
-  bytes.setUint16(20, 1, true); bytes.setUint16(22, 1, true); bytes.setUint32(24, sr, true); bytes.setUint32(28, sr * 2, true);
-  bytes.setUint16(32, 2, true); bytes.setUint16(34, 16, true); w4(36, 'data'); bytes.setUint32(40, len * 2, true);
-  for (let i = 0; i < len; i++) bytes.setInt16(44 + i * 2, Math.max(-1, Math.min(1, buf[i])) * 32767, true);
-  return wavCache[key] = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
-}
 function playWebAudio(v) {
   try {
-    const ctx = audioCtx(); if (ctx.state == 'suspended') ctx.resume();
+    const ctx = audioCtx(); if (ctx.state != 'running') ctx.resume();
     const t0 = ctx.currentTime;
     for (const [f, st, d, type] of TONES[TONES[cfg.sound] ? cfg.sound : 'ding']) {
-      const o = ctx.createOscillator(), g = ctx.createGain(), peak = .25 * v * (type == 'sine' || type == 'triangle' ? 1 : .5);
+      const o = ctx.createOscillator(), g = ctx.createGain(), peak = .4 * v * (type == 'sine' || type == 'triangle' ? 1 : .5);
       o.type = type; o.frequency.value = f;
       g.gain.setValueAtTime(.0001, t0 + st); g.gain.exponentialRampToValueAtTime(peak, t0 + st + .01); g.gain.exponentialRampToValueAtTime(.0001, t0 + st + d);
       o.connect(g).connect(ctx.destination); o.start(t0 + st); o.stop(t0 + st + d + .02);
     }
   } catch {}
 }
+let customBuf = null, customFor = null;
+async function playCustom(v) {
+  const ctx = audioCtx(); if (ctx.state != 'running') ctx.resume();
+  if (customFor !== customSnd.data) { customBuf = await ctx.decodeAudioData(await (await fetch(customSnd.data)).arrayBuffer()); customFor = customSnd.data }
+  const src = ctx.createBufferSource(), g = ctx.createGain(); g.gain.value = v;
+  src.buffer = customBuf; src.connect(g).connect(ctx.destination); src.start();
+}
 function playSound() {
   const v = cfg.vol / 100; if (cfg.sound == 'none' || !v) return;
-  try {
-    sndEl.src = cfg.sound == 'custom' && customSnd?.data ? customSnd.data : toneWav(cfg.sound, v);
-    sndEl.volume = v; sndEl.currentTime = 0;
-    const p = sndEl.play(); if (p) p.catch(() => playWebAudio(v));
-  } catch { playWebAudio(v) }
+  if (cfg.sound == 'custom' && customSnd?.data) playCustom(v).catch(() => playWebAudio(v));
+  else playWebAudio(v);
 }
 function banner(c, who, text) {
   const box = $('#notis'), d = document.createElement('div'); d.className = 'noti';
@@ -824,13 +804,14 @@ $('#f').onsubmit = e => {
   }
   function emotesFor(c, q) {
     const seen = new Set(), out = [];
-    for (const src of [c.emotes, c.tw, G.emotes, G.tw]) for (const k in src) {
+    // this channel's emotes first, then every Twitch emote you can use (subs etc.), then global 7TV/BTTV
+    [c.emotes, c.tw, G.tw, G.emotes].forEach((src, si) => { for (const k in src) {
       if (seen.has(k)) continue;
       const r = rank(k, q); if (r < 0) continue;
-      seen.add(k); out.push([r, k, src[k]]);
-    }
-    out.sort((a, b) => a[0] - b[0] || a[1].length - b[1].length || a[1].localeCompare(b[1]));
-    return out.slice(0, 40);
+      seen.add(k); out.push([r, si, k, src[k]]);
+    } });
+    out.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2].length - b[2].length || a[2].localeCompare(b[2]));
+    return out.slice(0, 80).map(x => [x[0], x[2], x[3]]);
   }
   function upd() {
     const c = chans[cur], x = ctx();
