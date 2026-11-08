@@ -242,6 +242,7 @@ function parse(raw) {
   let trailing = null;
   const t = s.indexOf(' :'); if (t >= 0) { trailing = s.slice(t + 2); s = s.slice(0, t) }
   const p = s.split(' ').filter(Boolean);
+  if (trailing === null && p[0] == 'PRIVMSG' && p.length > 2) trailing = p.slice(2).join(' ');
   return { tags, prefix, cmd: p[0], params: p.slice(1), trailing, nick: prefix.split('!')[0] };
 }
 
@@ -294,7 +295,7 @@ function onIrc(m) {
 function mkMsg(m, c, hist) {
   let text = m.trailing || '', action = false;
   if (text.startsWith('\x01ACTION ')) { action = true; text = text.slice(8).replace(/\x01/g, '') }
-  text = text.replace(/[\u{E0000}-\u{E007F}]/gu, '').trimEnd(); // invisible characters used to bypass the duplicate block
+  text = text.replace(/[\u{E0000}-\u{E007F}\u200B-\u200F\u2060-\u2064\u034F\uFEFF\u180E\uFFFC]/gu, '').trimEnd(); // invisible characters used to bypass the duplicate block
   const d = document.createElement('div');
   d.className = 'm' + (hist ? ' h' : '');
   const img = (url, cls, parent, title, bg) => { const i = new Image(); i.src = url; i.className = cls; i.title = i.alt = title || ''; if (bg) { i.style.backgroundColor = bg; i.style.borderRadius = '4px' } i.onerror = () => i.remove(); i.onload = () => { if (c.pin) toBottom(c) }; parent.append(i) };
@@ -330,7 +331,9 @@ function mkMsg(m, c, hist) {
   if (action) { root.style.color = color; d.append(root) }
 
   // emote = <span class="em" data-t="word"><img></span>; CSS swaps it for the text when emotes are turned off
+  let shown = false;
   const emote = (url, word, tp) => {
+    shown = true;
     const s = document.createElement('span'); s.className = 'em' + (tp ? ' tp' : ''); s.dataset.t = word;
     const i = new Image(); i.src = url; i.className = 'e'; i.alt = word;
     i.onload = () => { if (c.pin) toBottom(c) };
@@ -347,6 +350,7 @@ function mkMsg(m, c, hist) {
   }
   let buf = '';
   const flush = () => {
+    if (buf.trim()) shown = true;
     if (!buf) return;
     const w = buf.split(' ');
     w.forEach((word, i) => {
@@ -363,6 +367,13 @@ function mkMsg(m, c, hist) {
     buf += rs[i];
   }
   flush();
+  if (!shown && m.trailing) { // safety net: show the raw text (or its code points) instead of an empty row
+    const raw = [...m.trailing].filter(ch => /[\p{L}\p{N}\p{P}\p{S}]/u.test(ch)).join('');
+    const fb = document.createElement('span');
+    if (raw.trim()) fb.textContent = raw;
+    else { fb.style.cssText = 'color:var(--mut);font-size:.8em'; fb.textContent = '⟨' + [...m.trailing].map(ch => 'U+' + ch.codePointAt(0).toString(16).toUpperCase()).join(' ') + '⟩' }
+    root.append(fb);
+  }
   return d;
 }
 
