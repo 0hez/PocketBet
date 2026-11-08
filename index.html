@@ -23,13 +23,15 @@ body.kb .m{padding-top:calc(var(--pad)*.35);padding-bottom:calc(var(--pad)*.35)}
 body.kb .m.sys{font-size:.85em}
 #bar{display:flex;flex:none;align-items:center;gap:6px;padding:0 8px 3px}
 #brand{flex:none;display:flex;align-items:center;justify-content:center;gap:12px;padding:3px 0 calc(6px + env(safe-area-inset-bottom));user-select:none;-webkit-user-select:none;pointer-events:none;--g1:#8f6b2e;--g2:#f6e7b8;--g3:#c9a24f}
-#brand span{font:600 11px/1 var(--ff);letter-spacing:.5em;text-indent:.5em;text-transform:uppercase;background:linear-gradient(100deg,var(--g1) 0%,var(--g2) 25%,var(--g3) 50%,var(--g2) 75%,var(--g1) 100%) 0 0/250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;filter:drop-shadow(0 0 5px rgba(246,231,184,.22));animation:sheen 7s linear infinite}
+#brand span{display:flex;gap:.14em;font:700 14px/1 var(--ff);filter:drop-shadow(0 0 5px rgba(246,231,184,.22))}
+#brand b{display:block;font:inherit;background:linear-gradient(100deg,var(--g1) 0%,var(--g2) 25%,var(--g3) 50%,var(--g2) 75%,var(--g1) 100%) 0 0/250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:sheen 5s linear infinite,bob 2.6s ease-in-out infinite;animation-delay:calc(var(--i)*-.4s),calc(var(--i)*.14s)}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
 #brand i{display:block;position:relative;width:42px;height:1px;background:linear-gradient(90deg,transparent,var(--g3))}
 #brand i:last-child{background:linear-gradient(270deg,transparent,var(--g3))}
 #brand i::after{content:'';position:absolute;top:-2px;right:-1px;width:5px;height:5px;background:var(--g2);transform:rotate(45deg);opacity:.85}
 #brand i:last-child::after{right:auto;left:-1px}
 @keyframes sheen{to{background-position:-250% 0}}
-@media (prefers-reduced-motion:reduce){#brand span{animation:none}}
+@media (prefers-reduced-motion:reduce){#brand b{animation:none}}
 :root[data-theme=light] #brand{--g1:#6e4f17;--g2:#b8893a;--g3:#8f6b2e;--x:0}
 :root[data-theme=light] #brand span{filter:none}
 body.kb #brand{display:none}
@@ -131,7 +133,7 @@ dialog::backdrop{background:#0009}
   <button id="men" class="sec" aria-label="Mentions">@</button>
   <button id="cog" aria-label="Settings">⚙</button>
 </nav>
-<div id="brand"><i></i><span>kervrino</span><i></i></div>
+<div id="brand"><i></i><span aria-label="MyChats"><b style="--i:0">M</b><b style="--i:1">y</b><b style="--i:2">C</b><b style="--i:3">h</b><b style="--i:4">a</b><b style="--i:5">t</b><b style="--i:6">s</b></span><i></i></div>
 <div id="notis"></div>
 <dialog id="card"></dialog>
 <dialog id="dlg">
@@ -182,9 +184,10 @@ function applyCfg() {
 applyCfg();
 
 const fix = u => u.startsWith('//') ? 'https:' + u : u;
+const to = ms => (typeof AbortSignal != 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(ms) : undefined;
 const j = async u => {
   for (let t = 0; t < 3; t++) {
-    try { const r = await fetch(u); if (r.ok) return await r.json(); if (r.status < 500 && r.status != 429) return null } catch {}
+    try { const r = await fetch(u, { signal: to(9000) }); if (r.ok) return await r.json(); if (r.status < 500 && r.status != 429) return null } catch {}
     await sleep(400 * (t + 1));
   }
   return null;
@@ -196,18 +199,28 @@ const bttv = (l, o) => { for (const e of l || []) o[e.code] = `https://cdn.bette
 
 // ---------- globals: Twitch badges, FFZ badges, 7TV/BTTV emotes ----------
 const hx = u => auth.t ? fetch(u, { headers: { 'Client-Id': CLIENT_ID, Authorization: 'Bearer ' + auth.t } }).then(r => r.ok ? r.json() : null).catch(() => null) : null;
-// Twitch badges: official Helix API when logged in, old public endpoint as fallback
-async function getBadges(kind, room, o) {
+// Twitch badges: official Helix API when logged in; public mirrors when logged out (Twitch's old public endpoint was shut down)
+const ivrBadges = (d, o) => { let n = 0; for (const st of (Array.isArray(d) ? d : d?.data) || []) { const id = st.setID ?? st.set_id; for (const v of st.versions || []) { const u = v.image_url_2x || v.image_url_1x; if (!id || !u) continue; o[id + '/' + v.id] = u; o['t:' + id + '/' + v.id] = v.title || id; n++ } } return n };
+const CORE_BADGES = { broadcaster: ['5527c58c-fb7d-422d-b71b-f309dcb85cc1', 'Broadcaster'], moderator: ['3267646d-33f0-4b17-b3df-f923a41db1d0', 'Moderator'], vip: ['b817aba4-fad8-49e2-b88a-7cc744dfa6ec', 'VIP'], staff: ['d97c37bd-a6f5-4c38-8f57-4e4bef88af34', 'Staff'], admin: ['9ef7e029-4cdf-4d4d-a0d5-e2b3fb2583fe', 'Admin'], global_mod: ['9384c43e-4ce7-4e94-b2a1-b93656896eb6', 'Global Moderator'], partner: ['d12a2e27-16f6-41d0-ab77-b780518f00a3', 'Verified'], premium: ['bbbe0db0-a598-423e-86d0-f9fb98ca1933', 'Prime Gaming'], turbo: ['bd444ec6-8f34-4bf9-91f4-af1e3428d80f', 'Turbo'] };
+async function getBadges(kind, room, o, name) {
   const h = await hx(kind == 'g' ? 'https://api.twitch.tv/helix/chat/badges/global' : 'https://api.twitch.tv/helix/chat/badges?broadcaster_id=' + room);
   if (h?.data) { for (const st of h.data) for (const v of st.versions) { o[st.set_id + '/' + v.id] = v.image_url_2x || v.image_url_1x; o['t:' + st.set_id + '/' + v.id] = v.title } return }
-  badges(await j(kind == 'g' ? 'https://badges.twitch.tv/v1/badges/global/display' : `https://badges.twitch.tv/v1/badges/channels/${room}/display`), o);
+  const one = async u => { try { const r = await fetch(u, { signal: to(9000) }); return r.ok ? await r.json() : null } catch { return null } };
+  if (kind == 'g') {
+    if (ivrBadges(await one('https://api.ivr.fi/v2/twitch/badges/global'), o)) return;
+  } else {
+    if (ivrBadges(await one('https://api.ivr.fi/v2/twitch/badges/channel?id=' + room), o)) return;
+    if (name && ivrBadges(await one('https://api.ivr.fi/v2/twitch/badges/channel?login=' + encodeURIComponent(name)), o)) return;
+  }
+  badges(await one(kind == 'g' ? 'https://badges.twitch.tv/v1/badges/global/display' : `https://badges.twitch.tv/v1/badges/channels/${room}/display`), o);
+  if (kind == 'g' && !Object.keys(o).length) for (const [k, [id, t]] of Object.entries(CORE_BADGES)) { o[k + '/1'] = `https://static-cdn.jtvnw.net/badges/v1/${id}/2`; o['t:' + k + '/1'] = t } // last resort: the main role badges
 }
 // 7TV badge per user (looked up once, cached)
 const seen = {}; // login -> { uid, color, n } for every chatter we have seen (so @mentions can show their color / 7TV paint)
 const sevenP = {};
 const sevenUser = uid => sevenP[uid] ||= (async () => {
   for (let t = 0; t < 3; t++) {
-    try { const r = await fetch(`https://7tv.io/v3/users/twitch/${uid}`); if (r.status == 404) return null; if (r.ok) return (await r.json())?.user?.style || null } catch {}
+    try { const r = await fetch(`https://7tv.io/v3/users/twitch/${uid}`, { signal: to(9000) }); if (r.status == 404) return null; if (r.ok) return (await r.json())?.user?.style || null } catch {}
     await sleep(500 * (t + 1));
   }
   delete sevenP[uid]; return null; // lookup failed: try again on their next message
@@ -376,6 +389,17 @@ function mkEmote(url, word, tp, c) {
   i.onerror = () => { if (++k < list.length) setTimeout(() => { i.src = list[k] }, 350 * k); else { s.classList.add('x'); s.textContent = word } };
   s.append(i); return s;
 }
+// messages that arrived before a channel's Twitch badge list finished loading: add the missing badges
+function reBadge(c) {
+  for (const bs of c.el.querySelectorAll('span[data-tb]')) {
+    const want = [];
+    for (const b of bs.dataset.tb.split(',')) { const u = c.badges[b] || G.badges[b]; if (u) want.push([u, c.badges['t:' + b] || G.badges['t:' + b] || b.split('/')[0]]) }
+    const have = bs.querySelectorAll('[data-k=tw]');
+    if (want.length == have.length) continue;
+    have.forEach(x => x.remove());
+    for (const [u, t] of want.reverse()) { const i = new Image(); i.src = u; i.className = 'b'; i.title = i.alt = t; i.dataset.k = 'tw'; bs.prepend(i) }
+  }
+}
 // messages that arrived before a channel's emote lists finished loading: turn their plain-text emote names into emotes
 function reEmote(c) {
   for (const d of c.el.querySelectorAll('.m:not(.sys)')) {
@@ -413,7 +437,8 @@ function mkMsg(m, c, hist) {
   d.append(tm);
   const bs = document.createElement('span'); d.append(bs);
   const uid = m.tags['user-id'];
-  for (const b of (m.tags.badges || '').split(',')) { const u = c.badges[b] || G.badges[b]; if (u) img(u, 'b', bs, c.badges['t:' + b] || G.badges['t:' + b] || b.split('/')[0]) }
+  bs.dataset.tb = m.tags.badges || '';
+  for (const b of (m.tags.badges || '').split(',')) { const u = c.badges[b] || G.badges[b]; if (u) { img(u, 'b', bs, c.badges['t:' + b] || G.badges['t:' + b] || b.split('/')[0]); if (bs.lastChild) bs.lastChild.dataset.k = 'tw' } }
   for (const x of G.ffz[uid] || []) img(x.u, 'b', bs, x.t, x.c);
   const bt = G.bttvBadge[uid]; if (bt) img(bt.u, 'b', bs, bt.t);
   for (const x of G.chatterino[uid] || []) img(x.u, 'b', bs, x.t);
@@ -563,7 +588,7 @@ async function load(c, room) {
   c.room = room;
   await globalsReady;
   const [, s, b, f, h, te] = await Promise.all([
-    getBadges('c', room, c.badges),
+    getBadges('c', room, c.badges, c.name),
     j(`https://7tv.io/v3/users/twitch/${room}`),
     j(`https://api.betterttv.net/3/cached/users/twitch/${room}`),
     j(`https://api.frankerfacez.com/v1/room/id/${room}`),
@@ -578,6 +603,7 @@ async function load(c, room) {
   for (const l of h?.messages || []) { const m = parse(l); if (m && m.cmd == 'PRIVMSG' && !muted(m)) frag.append(mkMsg(m, c, true)) }
   c.el.prepend(frag);
   reEmote(c);
+  reBadge(c);
   if (c.pin) toBottom(c);
 }
 
@@ -1255,7 +1281,7 @@ async function finishLogin() {
 const loginDone = finishLogin();
 const globalsReady = loginDone.then(loadGlobals);
 loginDone.then(loadTwEmotes);
-loginDone.then(() => { loadSession(); connect() });
+loginDone.then(() => { loadSession(); return Promise.race([globalsReady, sleep(6000)]) }).then(() => { if (!ws) connect() });
 </script>
 </body>
 </html>
