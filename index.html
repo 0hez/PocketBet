@@ -26,10 +26,6 @@ body.kb .m.sys{font-size:.85em}
 #brand span{display:flex;gap:.14em;font:700 14px/1 var(--ff);filter:drop-shadow(0 0 5px rgba(246,231,184,.22))}
 #brand b{display:block;font:inherit;background:linear-gradient(100deg,var(--g1) 0%,var(--g2) 25%,var(--g3) 50%,var(--g2) 75%,var(--g1) 100%) 0 0/250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:sheen 5s linear infinite,bob 2.6s ease-in-out infinite;animation-delay:calc(var(--i)*-.4s),calc(var(--i)*.14s)}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
-#brand i{display:block;position:relative;width:42px;height:1px;background:linear-gradient(90deg,transparent,var(--g3))}
-#brand i:last-child{background:linear-gradient(270deg,transparent,var(--g3))}
-#brand i::after{content:'';position:absolute;top:-2px;right:-1px;width:5px;height:5px;background:var(--g2);transform:rotate(45deg);opacity:.85}
-#brand i:last-child::after{right:auto;left:-1px}
 @keyframes sheen{to{background-position:-250% 0}}
 @media (prefers-reduced-motion:reduce){#brand b{animation:none}}
 :root[data-theme=light] #brand{--g1:#6e4f17;--g2:#b8893a;--g3:#8f6b2e;--x:0}
@@ -140,7 +136,7 @@ dialog::backdrop{background:#0009}
   <button id="men" class="sec" aria-label="Mentions">@</button>
   <button id="cog" aria-label="Settings">⚙</button>
 </nav>
-<div id="brand"><i></i><span aria-label="MyChats"><b style="--i:0">M</b><b style="--i:1">y</b><b style="--i:2">C</b><b style="--i:3">h</b><b style="--i:4">a</b><b style="--i:5">t</b><b style="--i:6">s</b></span><i></i></div>
+<div id="brand"><span aria-label="MyChats"><b style="--i:0">M</b><b style="--i:1">y</b><b style="--i:2">C</b><b style="--i:3">h</b><b style="--i:4">a</b><b style="--i:5">t</b><b style="--i:6">s</b></span></div>
 <div id="notis"></div>
 <dialog id="card"></dialog>
 <dialog id="dlg">
@@ -226,7 +222,7 @@ async function getBadges(kind, room, o, name) {
 // 7TV badge per user (looked up once, cached)
 const seen = {}; // login -> { uid, color, n } for every chatter we have seen (so @mentions can show their color / 7TV paint)
 // 7TV lookups: cached on this device (so badges/paints show instantly next time), retried, and re-checked in the background
-const SVU = 'sv:u', SVP = 'sv:p', H3 = 3 * 3600e3, H24 = 24 * 3600e3;
+const SVU = 'sv:u', SVP = 'sv:p', H3 = 12 * 3600e3, H24 = 24 * 3600e3;
 const svu = store.get(SVU, {}), svp = store.get(SVP, {});
 let svT = 0;
 const svFlush = () => { clearTimeout(svT); svT = setTimeout(() => {
@@ -234,7 +230,7 @@ const svFlush = () => { clearTimeout(svT); svT = setTimeout(() => {
   trim(svu, 1500); trim(svp, 150); store.set(SVU, svu); store.set(SVP, svp);
 }, 2000) };
 let svBusy = 0; const svWait = [];
-const svSlot = async () => { if (svBusy >= 6) await new Promise(r => svWait.push(r)); svBusy++ };
+const svSlot = async () => { if (svBusy >= 12) await new Promise(r => svWait.push(r)); svBusy++ };
 const svDone = () => { svBusy--; svWait.shift()?.() };
 const sevenP = {}, sevenFail = {};
 // resolves to { badge_id, paint_id }, null (no 7TV cosmetics), or undefined (lookup failed: try again later)
@@ -247,7 +243,7 @@ const sevenUser = uid => {
     try {
       for (let t = 0; t < 4; t++) {
         try {
-          const r = await fetch(`https://7tv.io/v3/users/twitch/${uid}`, { signal: to(9000) });
+          const r = await fetch(`https://7tv.io/v3/users/twitch/${uid}`, { signal: to(4500) });
           if (r.status == 404) { svu[uid] = { s: null, t: Date.now() }; svFlush(); setTimeout(() => delete sevenP[uid], 600e3); return null }
           if (r.ok) {
             const st = (await r.json())?.user?.style, v = st && (st.badge_id || st.paint_id) ? { badge_id: st.badge_id || null, paint_id: st.paint_id || null } : null;
@@ -274,7 +270,7 @@ const sevenPaint = id => {
     delete paintP[id]; paintFail[id] = Date.now(); return null;
   })();
 };
-const gql = (q, id) => fetch('https://7tv.io/v3/gql', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, variables: { l: [id] } }), signal: to(9000) }).then(r => r.json()).catch(() => null);
+const gql = (q, id) => fetch('https://7tv.io/v3/gql', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, variables: { l: [id] } }), signal: to(4500) }).then(r => r.json()).catch(() => null);
 const fetchPaint = id => gql('query($l:[ObjectID!]){cosmetics(list:$l){paints{id function color angle image_url repeat stops{at color} shadows{x_offset y_offset radius color}}}}', id).then(d => d?.data?.cosmetics?.paints?.[0] || null);
 // names for the press-and-hold note (separate queries so a miss can never affect how a paint is drawn)
 const infoP = {};
@@ -286,6 +282,9 @@ function mkBadge(urls, title, k, bid) {
   i.onerror = () => { if (++q < all.length) setTimeout(() => { i.src = all[q] }, 300 * q); else i.remove() };
   i.src = all[0]; return i;
 }
+// look a user's badge + paint up (and preload an image paint) BEFORE their message is drawn, so it appears already painted
+const prefetch7 = uid => sevenUser(uid).then(st => st?.paint_id ? sevenPaint(st.paint_id) : null)
+  .then(pt => pt?.function == 'URL' && pt.image_url ? new Promise(r => { const i = new Image(); i.onload = i.onerror = () => r(); i.src = fix(pt.image_url) }) : null).catch(() => null);
 // put a user's 7TV badge + paint on a name (n) and its badge strip (bs); anything that fails is retried by the sweep below
 async function applySeven(n, bs, uid) {
   if (!uid || !n || n.dataset.sv == '1') return;
@@ -468,15 +467,24 @@ function mkEmote(url, word, tp, c) {
   i.onerror = () => { if (++k < list.length) setTimeout(() => { i.src = list[k] }, 350 * k); else { s.classList.add('x'); s.textContent = word } };
   s.append(i); return s;
 }
-// messages that arrived before a channel's Twitch badge list finished loading: add the missing badges
+// messages that arrived before the badge lists finished loading: add the missing badges (Twitch, FFZ, BTTV, Chatterino, DankChat)
 function reBadge(c) {
   for (const bs of c.el.querySelectorAll('span[data-tb]')) {
     const want = [];
     for (const b of bs.dataset.tb.split(',')) { const u = c.badges[b] || G.badges[b]; if (u) want.push([u, c.badges['t:' + b] || G.badges['t:' + b] || b.split('/')[0]]) }
     const have = bs.querySelectorAll('[data-k=tw]');
-    if (want.length == have.length) continue;
-    have.forEach(x => x.remove());
-    for (const [u, t] of want.reverse()) { const i = new Image(); i.src = u; i.className = 'b'; i.title = i.alt = t; i.dataset.k = 'tw'; bs.prepend(i) }
+    if (want.length != have.length) {
+      have.forEach(x => x.remove());
+      for (const [u, t] of want.reverse()) { const i = new Image(); i.src = u; i.className = 'b'; i.title = i.alt = t; i.dataset.k = 'tw'; bs.prepend(i) }
+    }
+    const uid = bs.dataset.u; if (!uid) continue;
+    const ex = { ffz: (G.ffz[uid] || []).map(x => [x.u, x.t, x.c]), bttv: G.bttvBadge[uid] ? [[G.bttvBadge[uid].u, G.bttvBadge[uid].t]] : [], chatterino: (G.chatterino[uid] || []).map(x => [x.u, x.t]), dank: (G.dank[uid] || []).map(x => [x.u, x.t]) };
+    for (const [k, list] of Object.entries(ex)) {
+      if (!list.length || bs.querySelectorAll(`[data-k="${k}"]`).length >= list.length) continue;
+      bs.querySelectorAll(`[data-k="${k}"]`).forEach(x => x.remove());
+      const before = bs.querySelector('[data-k="7tv"]');
+      for (const [u, t, bg] of list) { const i = new Image(); i.src = u; i.className = 'b'; i.title = i.alt = t || ''; i.dataset.k = k; if (bg) { i.style.backgroundColor = bg; i.style.borderRadius = '4px' } before ? bs.insertBefore(i, before) : bs.append(i) }
+    }
   }
 }
 // messages that arrived before a channel's emote lists finished loading: turn their plain-text emote names into emotes
@@ -516,7 +524,7 @@ function mkMsg(m, c, hist) {
   d.append(tm);
   const bs = document.createElement('span'); d.append(bs);
   const uid = m.tags['user-id'];
-  bs.dataset.tb = m.tags.badges || '';
+  bs.dataset.tb = m.tags.badges || ''; if (uid) bs.dataset.u = uid;
   for (const b of (m.tags.badges || '').split(',')) { const u = c.badges[b] || G.badges[b]; if (u) img(u, 'b', bs, c.badges['t:' + b] || G.badges['t:' + b] || b.split('/')[0], null, 'tw') }
   for (const x of G.ffz[uid] || []) img(x.u, 'b', bs, x.t, x.c, 'ffz');
   const bt = G.bttvBadge[uid]; if (bt) img(bt.u, 'b', bs, bt.t, null, 'bttv');
@@ -674,6 +682,8 @@ async function load(c, room) {
   seven(s?.emote_set?.emotes, c.emotes);
   if (b) { bttv(b.channelEmotes, c.emotes); bttv(b.sharedEmotes, c.emotes) }
   for (const set of Object.values(f?.sets || {})) for (const e of set.emoticons || []) c.emotes[e.name] = fix(e.urls['2'] || e.urls['1']);
+  const pre = [...new Set((h?.messages || []).map(l => /user-id=(\d+)/.exec(l)?.[1]).filter(Boolean))];
+  pre.forEach(prefetch7); // lookups start now; paints land on the rows as soon as they are back
   const frag = document.createDocumentFragment();
   for (const l of h?.messages || []) { const m = parse(l); if (m && m.cmd == 'PRIVMSG' && !muted(m)) frag.append(mkMsg(m, c, true)) }
   c.el.prepend(frag);
@@ -1401,7 +1411,9 @@ async function finishLogin() {
 const loginDone = finishLogin();
 const globalsReady = loginDone.then(loadGlobals);
 loginDone.then(loadTwEmotes);
-loginDone.then(() => { loadSession(); return Promise.race([globalsReady, sleep(6000)]) }).then(() => { if (!ws) connect() });
+loginDone.then(() => { if (auth.id) prefetch7(auth.id) }); // your own 7TV badge/paint is ready before you send your first message
+loginDone.then(() => { loadSession(); connect() });
+globalsReady.then(() => { for (const k in chans) if (k[0] != '@') reBadge(chans[k]) }); // badges from the global lists reach messages that came in before the lists were ready
 </script>
 </body>
 </html>
