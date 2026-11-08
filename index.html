@@ -33,10 +33,14 @@ button.sec{background:var(--chip);color:var(--fg)}
 .sr button b{color:var(--p)}
 #sue{gap:12px}
 #sue button img{height:46px;max-width:140px;object-fit:contain;display:block}
+#in{padding:8px 10px}
+#bar button{min-height:32px;padding:0 12px}
+form{padding:6px 8px 2px}
+#send{min-height:36px}
 #send{touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;min-width:64px}
 #send.hot{background:#e91916;color:#fff}
 #tabs{display:flex;position:relative;overflow-x:auto;gap:4px;flex:1;min-width:0;scrollbar-width:none}
-#tabs button{background:var(--chip);color:var(--fg);white-space:nowrap;min-height:34px;padding:0 12px}
+#tabs button{background:var(--chip);color:var(--fg);white-space:nowrap;min-height:30px;padding:0 10px}
 #tabs .on{background:var(--p);color:var(--pt)}
 #tabs .new{outline:2px solid var(--p)}
 #chat{position:relative;flex:1;min-height:0;overflow:hidden;touch-action:pan-y}
@@ -131,7 +135,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---------- settings (saved per Twitch account, guests share "guest") ----------
 const DEF = {
-  theme: 'dark', accent: '#9147ff', font: 'sys', fs: 15, pad: 7, alt: true, fixc: true, es: 28, bs: 22,
+  theme: 'dark', accent: '#9147ff', font: 'sys', fs: 13, pad: 2, alt: true, fixc: true, es: 28, bs: 18, lv: 2,
   ts: true, h12: false, hist: true, max: 500,
   noti: true, banner: true, bdur: 6, sysnoti: false, sound: 'ding', vol: 70,
   hl: true, hlc: '#ffb300', mutew: '', muteu: '',
@@ -139,7 +143,12 @@ const DEF = {
 };
 const FONTS = { sys: 'system-ui,sans-serif', serif: 'Georgia,serif', mono: 'ui-monospace,Menlo,Consolas,monospace', round: 'ui-rounded,"Segoe UI",system-ui,sans-serif' };
 const ckey = () => 'cfg:' + (auth.u || 'guest');
-const loadCfg = () => ({ ...DEF, ...store.get(ckey(), store.get('cfg:guest', {})) });
+// lv = layout version: one time, move saved sizes to the new compact defaults (you can still change them in Settings > Look)
+const loadCfg = () => {
+  const saved = store.get(ckey(), store.get('cfg:guest', {})), c = { ...DEF, ...saved };
+  if (saved.lv !== DEF.lv) Object.assign(c, { fs: DEF.fs, pad: DEF.pad, es: DEF.es, bs: DEF.bs, lv: DEF.lv });
+  return c;
+};
 let cfg = loadCfg();
 const saveCfg = () => store.set(ckey(), cfg);
 const ink = hex => { const v = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)); return (.2126 * v[0] + .7152 * v[1] + .0722 * v[2]) / 255 > .6 ? '#000' : '#fff' };
