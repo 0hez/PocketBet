@@ -118,6 +118,13 @@ dialog::backdrop{background:#0009}
 .kv{display:flex;justify-content:space-between;padding:4px 0;font-size:14px}
 .kv span:first-child{color:var(--mut)}
 #sb .wide{width:100%;margin-top:8px}
+
+.nobadges .b{display:none}
+.nopaint [data-pid]{background-image:none!important;color:var(--nc,inherit)!important;-webkit-text-fill-color:var(--nc,currentColor)!important;filter:none!important}
+.b,.nm,.mn{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#tip{position:fixed;inset:auto;margin:0;overflow:visible;z-index:90;max-width:min(72vw,240px);background:var(--card);color:var(--fg);border:1px solid var(--p);border-radius:6px;padding:3px 7px;font:11px/1.3 var(--ff);box-shadow:0 4px 14px #0009;pointer-events:none;word-break:break-word}
+#tip:not(.on){display:none}
+#tip.on{display:block}
 </style>
 </head>
 <body>
@@ -155,8 +162,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---------- settings (saved per Twitch account, guests share "guest") ----------
 const DEF = {
-  theme: 'dark', accent: '#9147ff', font: 'sys', fs: 13, pad: 2, alt: true, fixc: true, es: 28, bs: 18, lv: 2,
-  ts: true, h12: false, hist: true, max: 500,
+  theme: 'black', tv: 1, accent: '#9147ff', font: 'sys', fs: 13, pad: 2, alt: true, fixc: true, es: 28, bs: 18, lv: 2,
+  ts: true, h12: false, hist: true, max: 500, badges: true, paints: true, tips: true,
   noti: true, banner: true, bdur: 6, sysnoti: false, sound: 'ding', vol: 70,
   hl: true, hlc: '#ffb300', mutew: '', muteu: '',
   spam: true, hold: 400, modburst: true, dupfix: true, maxspam: 0
@@ -167,6 +174,7 @@ const ckey = () => 'cfg:' + (auth.u || 'guest');
 const loadCfg = () => {
   const saved = store.get(ckey(), store.get('cfg:guest', {})), c = { ...DEF, ...saved };
   if (saved.lv !== DEF.lv) Object.assign(c, { fs: DEF.fs, pad: DEF.pad, es: DEF.es, bs: DEF.bs, lv: DEF.lv });
+  if (saved.tv !== 1) Object.assign(c, { theme: 'black', tv: 1 }); // one time: switch to the pure black theme (you can still change it in Settings > Look)
   return c;
 };
 let cfg = loadCfg();
@@ -179,7 +187,7 @@ function applyCfg() {
   s.setProperty('--fs', cfg.fs + 'px'); s.setProperty('--es', cfg.es + 'px'); s.setProperty('--bs', cfg.bs + 'px');
   s.setProperty('--pad', cfg.pad + 'px'); s.setProperty('--hl', cfg.hlc); s.setProperty('--ff', FONTS[cfg.font] || FONTS.sys);
   const b = document.body.classList;
-  b.toggle('nots', !cfg.ts); b.toggle('noalt', !cfg.alt);
+  b.toggle('nots', !cfg.ts); b.toggle('noalt', !cfg.alt); b.toggle('nobadges', !cfg.badges); b.toggle('nopaint', !cfg.paints);
 }
 applyCfg();
 
@@ -217,21 +225,89 @@ async function getBadges(kind, room, o, name) {
 }
 // 7TV badge per user (looked up once, cached)
 const seen = {}; // login -> { uid, color, n } for every chatter we have seen (so @mentions can show their color / 7TV paint)
-const sevenP = {};
-const sevenUser = uid => sevenP[uid] ||= (async () => {
-  for (let t = 0; t < 3; t++) {
-    try { const r = await fetch(`https://7tv.io/v3/users/twitch/${uid}`, { signal: to(9000) }); if (r.status == 404) return null; if (r.ok) return (await r.json())?.user?.style || null } catch {}
-    await sleep(500 * (t + 1));
+// 7TV lookups: cached on this device (so badges/paints show instantly next time), retried, and re-checked in the background
+const SVU = 'sv:u', SVP = 'sv:p', H3 = 3 * 3600e3, H24 = 24 * 3600e3;
+const svu = store.get(SVU, {}), svp = store.get(SVP, {});
+let svT = 0;
+const svFlush = () => { clearTimeout(svT); svT = setTimeout(() => {
+  const trim = (o, n) => { const k = Object.keys(o); if (k.length > n) for (const x of k.sort((a, b) => o[a].t - o[b].t).slice(0, k.length - n)) delete o[x] };
+  trim(svu, 1500); trim(svp, 150); store.set(SVU, svu); store.set(SVP, svp);
+}, 2000) };
+let svBusy = 0; const svWait = [];
+const svSlot = async () => { if (svBusy >= 6) await new Promise(r => svWait.push(r)); svBusy++ };
+const svDone = () => { svBusy--; svWait.shift()?.() };
+const sevenP = {}, sevenFail = {};
+// resolves to { badge_id, paint_id }, null (no 7TV cosmetics), or undefined (lookup failed: try again later)
+const sevenUser = uid => {
+  if (sevenP[uid]) return sevenP[uid];
+  const c = svu[uid]; if (c && Date.now() - c.t < (c.s ? H3 : 600e3)) return sevenP[uid] = Promise.resolve(c.s);
+  if (sevenFail[uid] && Date.now() - sevenFail[uid] < 6000) return Promise.resolve(undefined);
+  return sevenP[uid] = (async () => {
+    await svSlot();
+    try {
+      for (let t = 0; t < 4; t++) {
+        try {
+          const r = await fetch(`https://7tv.io/v3/users/twitch/${uid}`, { signal: to(9000) });
+          if (r.status == 404) { svu[uid] = { s: null, t: Date.now() }; svFlush(); setTimeout(() => delete sevenP[uid], 600e3); return null }
+          if (r.ok) {
+            const st = (await r.json())?.user?.style, v = st && (st.badge_id || st.paint_id) ? { badge_id: st.badge_id || null, paint_id: st.paint_id || null } : null;
+            svu[uid] = { s: v, t: Date.now() }; svFlush(); if (!v) setTimeout(() => delete sevenP[uid], 600e3); return v;
+          }
+        } catch {}
+        await sleep(400 * (t + 1));
+      }
+      delete sevenP[uid]; sevenFail[uid] = Date.now(); return undefined;
+    } finally { svDone() }
+  })();
+};
+const paintP = {}, paintFail = {};
+const sevenPaint = id => {
+  if (paintP[id]) return paintP[id];
+  const c = svp[id]; if (c && Date.now() - c.t < H24) return paintP[id] = Promise.resolve(c.p);
+  if (paintFail[id] && Date.now() - paintFail[id] < 6000) return Promise.resolve(null);
+  return paintP[id] = (async () => {
+    for (let t = 0; t < 4; t++) {
+      const p = await fetchPaint(id);
+      if (p) { svp[id] = { p, t: Date.now() }; svFlush(); return p }
+      await sleep(400 * (t + 1));
+    }
+    delete paintP[id]; paintFail[id] = Date.now(); return null;
+  })();
+};
+const gql = (q, id) => fetch('https://7tv.io/v3/gql', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, variables: { l: [id] } }), signal: to(9000) }).then(r => r.json()).catch(() => null);
+const fetchPaint = id => gql('query($l:[ObjectID!]){cosmetics(list:$l){paints{id function color angle image_url repeat stops{at color} shadows{x_offset y_offset radius color}}}}', id).then(d => d?.data?.cosmetics?.paints?.[0] || null);
+// names for the press-and-hold note (separate queries so a miss can never affect how a paint is drawn)
+const infoP = {};
+const paintName = id => infoP['p' + id] ||= gql('query($l:[ObjectID!]){cosmetics(list:$l){paints{id name}}}', id).then(d => d?.data?.cosmetics?.paints?.[0]?.name || null).then(x => { if (!x) delete infoP['p' + id]; return x });
+const badgeInfo = id => infoP['b' + id] ||= gql('query($l:[ObjectID!]){cosmetics(list:$l){badges{id name tooltip}}}', id).then(d => d?.data?.cosmetics?.badges?.[0] || null).then(x => { if (!x) delete infoP['b' + id]; return x });
+function mkBadge(urls, title, k, bid) {
+  const i = new Image(); i.className = 'b'; i.title = i.alt = title; i.dataset.k = k; if (bid) i.dataset.bid = bid;
+  const all = [...urls, ...urls.map(u => u + '?r=1')]; let q = 0;
+  i.onerror = () => { if (++q < all.length) setTimeout(() => { i.src = all[q] }, 300 * q); else i.remove() };
+  i.src = all[0]; return i;
+}
+// put a user's 7TV badge + paint on a name (n) and its badge strip (bs); anything that fails is retried by the sweep below
+async function applySeven(n, bs, uid) {
+  if (!uid || !n || n.dataset.sv == '1') return;
+  const st = await sevenUser(uid);
+  if (st === undefined) return;
+  if (!st) { n.dataset.sv = '1'; return }
+  let ok = true;
+  if (st.badge_id && bs && !bs.querySelector('[data-k="7tv"]')) { const u = `https://cdn.7tv.app/badge/${st.badge_id}/`; bs.append(mkBadge([u + '2x.webp', u + '2x.png', u + '1x.webp', u + '1x.png'], '7TV badge', '7tv', st.badge_id)) }
+  if (st.paint_id) { const pt = await sevenPaint(st.paint_id); if (pt) paint(n, pt); else ok = false }
+  if (ok) n.dataset.sv = '1';
+}
+setInterval(() => {
+  if (document.hidden) return;
+  const log = chans[cur]?.el; if (!log) return;
+  for (const n of log.querySelectorAll('.nm:not([data-sv]),.mn:not([data-sv])')) {
+    if (n.classList.contains('mn')) {
+      const k = seen[n.dataset.login]; if (!k?.uid) continue;
+      if (k.color && !n.dataset.color) { n.dataset.color = k.color; if (!n.dataset.pid) n.style.color = k.color }
+      applySeven(n, null, k.uid);
+    } else if (n.dataset.uid) applySeven(n, n.previousElementSibling, n.dataset.uid);
   }
-  delete sevenP[uid]; return null; // lookup failed: try again on their next message
-})();
-// 7TV paints (name gradients), fetched once per paint id
-const paintP = {};
-const sevenPaint = id => paintP[id] ||= fetchPaint(id).then(p => { if (!p) delete paintP[id]; return p });
-const fetchPaint = id => fetch('https://7tv.io/v3/gql', {
-  method: 'POST', headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ query: 'query($l:[ObjectID!]){cosmetics(list:$l){paints{id function color angle image_url repeat stops{at color} shadows{x_offset y_offset radius color}}}}', variables: { l: [id] } })
-}).then(r => r.json()).then(d => d?.data?.cosmetics?.paints?.[0] || null).catch(() => null);
+}, 2500);
 const rgba = n => { n >>>= 0; return `rgba(${n >>> 24},${(n >> 16) & 255},${(n >> 8) & 255},${((n & 255) / 255).toFixed(2)})` };
 function paint(el, p) {
   const st = (p.stops || []).map(x => `${rgba(x.color)} ${(x.at * 100).toFixed(1)}%`).join(',');
@@ -240,12 +316,15 @@ function paint(el, p) {
     : p.function == 'RADIAL_GRADIENT' ? `${r}radial-gradient(circle,${st})`
     : p.image_url ? `url(${fix(p.image_url)})` : null;
   if (!bg || (p.function != 'URL' && !st)) return;
-  const base = el.style.color; // the normal name color stays underneath, so see-through parts of a paint never hide the name
+  if (el._pp == p.id) return; el._pp = p.id;
+  const base = el.dataset.color || (el.style.color && el.style.color != 'transparent' ? el.style.color : ''); // the normal name color stays underneath, so see-through parts of a paint never hide the name
+  if (base) el.style.setProperty('--nc', base);
   const apply = () => {
     Object.assign(el.style, { backgroundImage: bg + (base ? `,linear-gradient(${base},${base})` : ''), backgroundSize: p.function == 'URL' ? 'cover,auto' : '', backgroundClip: 'text', webkitBackgroundClip: 'text', color: 'transparent', webkitTextFillColor: 'transparent' });
     if (p.shadows?.length) el.style.filter = p.shadows.map(x => `drop-shadow(${x.x_offset}px ${x.y_offset}px ${x.radius}px ${rgba(x.color)})`).join(' ');
+    el.dataset.pid = p.id;
   };
-  if (p.function == 'URL') { const im = new Image(); im.onload = apply; im.src = fix(p.image_url) } // only switch once the image really loaded
+  if (p.function == 'URL') { const im = new Image(); im.onload = apply; im.onerror = () => { el._pp = null }; im.src = fix(p.image_url) } // only switch once the image really loaded
   else apply();
 }
 const fixColor = c => {
@@ -417,8 +496,8 @@ function reEmote(c) {
 function mkMention(name) {
   const s = document.createElement('span'); s.className = 'mn'; s.textContent = '@' + name; s.dataset.login = name.toLowerCase();
   const k = seen[name.toLowerCase()];
-  if (k?.color) s.style.color = k.color;
-  if (k?.uid) sevenUser(k.uid).then(async st => { if (st?.paint_id) { const pt = await sevenPaint(st.paint_id); if (pt) paint(s, pt) } });
+  if (k?.color) { s.style.color = k.color; s.dataset.color = k.color }
+  if (k?.uid) applySeven(s, null, k.uid);
   return s;
 }
 // ---------- message rendering ----------
@@ -428,7 +507,7 @@ function mkMsg(m, c, hist) {
   text = text.replace(/[\u{E0000}-\u{E007F}\u200B-\u200F\u2060-\u2064\u034F\uFEFF\u180E\uFFFC]/gu, '').trimEnd(); // invisible characters used to bypass the duplicate block
   const d = document.createElement('div');
   d.className = 'm' + (hist ? ' h' : ''); if (m.tags.id) d.dataset.id = m.tags.id;
-  const img = (url, cls, parent, title, bg) => { const i = new Image(); i.src = url; i.className = cls; i.title = i.alt = title || ''; if (bg) { i.style.backgroundColor = bg; i.style.borderRadius = '4px' } let tr = 0; i.onerror = () => { if (tr++ < 3) setTimeout(() => { i.src = url + (url.includes('?') ? '&' : '?') + 'r=' + tr }, 500 * tr); else i.remove() }; i.onload = () => { if (c.pin) toBottom(c) }; parent.append(i) };
+  const img = (url, cls, parent, title, bg, k) => { const i = new Image(); i.src = url; i.className = cls; i.title = i.alt = title || ''; if (k) i.dataset.k = k; if (bg) { i.style.backgroundColor = bg; i.style.borderRadius = '4px' } let tr = 0; i.onerror = () => { if (tr++ < 3) setTimeout(() => { i.src = url + (url.includes('?') ? '&' : '?') + 'r=' + tr }, 500 * tr); else i.remove() }; i.onload = () => { if (c.pin) toBottom(c) }; parent.append(i) };
   if (cfg.hl && auth.u && (m.nick || '').toLowerCase() != auth.u.toLowerCase() &&
       new RegExp('(^|\\W)@?' + auth.u.replace(/\W/g, '') + '(?!\\w)', 'i').test(text)) d.classList.add('hl');
 
@@ -438,16 +517,11 @@ function mkMsg(m, c, hist) {
   const bs = document.createElement('span'); d.append(bs);
   const uid = m.tags['user-id'];
   bs.dataset.tb = m.tags.badges || '';
-  for (const b of (m.tags.badges || '').split(',')) { const u = c.badges[b] || G.badges[b]; if (u) { img(u, 'b', bs, c.badges['t:' + b] || G.badges['t:' + b] || b.split('/')[0]); if (bs.lastChild) bs.lastChild.dataset.k = 'tw' } }
-  for (const x of G.ffz[uid] || []) img(x.u, 'b', bs, x.t, x.c);
-  const bt = G.bttvBadge[uid]; if (bt) img(bt.u, 'b', bs, bt.t);
-  for (const x of G.chatterino[uid] || []) img(x.u, 'b', bs, x.t);
-  for (const x of G.dank[uid] || []) img(x.u, 'b', bs, x.t);
-  if (uid) sevenUser(uid).then(async st => {
-    if (!st) return;
-    if (st.badge_id) img(`https://cdn.7tv.app/badge/${st.badge_id}/2x.webp`, 'b', bs, '7TV badge');
-    if (st.paint_id) { const pt = await sevenPaint(st.paint_id); if (pt) paint(n, pt) }
-  });
+  for (const b of (m.tags.badges || '').split(',')) { const u = c.badges[b] || G.badges[b]; if (u) img(u, 'b', bs, c.badges['t:' + b] || G.badges['t:' + b] || b.split('/')[0], null, 'tw') }
+  for (const x of G.ffz[uid] || []) img(x.u, 'b', bs, x.t, x.c, 'ffz');
+  const bt = G.bttvBadge[uid]; if (bt) img(bt.u, 'b', bs, bt.t, null, 'bttv');
+  for (const x of G.chatterino[uid] || []) img(x.u, 'b', bs, x.t, null, 'chatterino');
+  for (const x of G.dank[uid] || []) img(x.u, 'b', bs, x.t, null, 'dank');
 
   const name = m.tags['display-name'] || m.nick;
   if (c.users && m.nick) c.users[m.nick.toLowerCase()] = { n: name, t: +m.tags['tmi-sent-ts'] || Date.now() }; // for @ autocomplete
@@ -458,6 +532,7 @@ function mkMsg(m, c, hist) {
   const bi = (m.tags['badge-info'] || '').split(',').find(x => /^(subscriber|founder)\//.test(x));
   n.dataset.sub = bi ? bi.split('/')[1] : '';
   d.append(n, action ? ' ' : ': ');
+  if (uid) applySeven(n, bs, uid);
 
   const root = action ? Object.assign(document.createElement('span'), { className: 'act' }) : d;
   if (action) { root.style.color = color; d.append(root) }
@@ -939,6 +1014,46 @@ $('#f').onsubmit = e => {
 $('#men').onclick = () => { ensureMentions(); if (cur != '@mentions') show('@mentions') };
 $('#add').onclick = () => { const n = prompt('Channel name'); if (n) openChan(n) };
 
+// ---------- press & hold a badge or painted name: small note that stays until you tap elsewhere ----------
+const tip = document.createElement('div'); tip.id = 'tip'; tip.setAttribute('popover', 'manual'); document.body.append(tip);
+let tipFor = null, lp = null, noClick = 0;
+const SRC = { tw: 'Twitch', ffz: 'FFZ', bttv: 'BetterTTV', chatterino: 'Chatterino', dank: 'DankChat', '7tv': '7TV' };
+function hideTip() { if (!tipFor) return; tipFor = null; try { tip.hidePopover() } catch {} tip.classList.remove('on') }
+function placeTip(t) {
+  const r = t.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+  const x = Math.max(6, Math.min(innerWidth - w - 6, r.left + r.width / 2 - w / 2));
+  let y = r.top - h - 8; if (y < 6) y = r.bottom + 8;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+function showTip(t, text) {
+  tipFor = t; tip.textContent = text; tip.classList.add('on');
+  try { tip.showPopover() } catch {}
+  placeTip(t);
+}
+async function describe(t) {
+  if (t.classList.contains('b')) {
+    const k = t.dataset.k, base = t.title || t.alt || 'Badge';
+    if (k == '7tv') { showTip(t, '7TV badge'); const i = t.dataset.bid ? await badgeInfo(t.dataset.bid) : null; if (i && tipFor == t) showTip(t, '7TV badge: ' + (i.tooltip || i.name)); return }
+    showTip(t, SRC[k] ? `${base} · ${SRC[k]} badge` : base);
+  } else if (t.dataset.pid) {
+    showTip(t, '7TV paint'); const nm = await paintName(t.dataset.pid); if (nm && tipFor == t) showTip(t, '7TV paint: ' + nm);
+  }
+}
+const lpTarget = e => e.target.closest?.('.b,.nm[data-pid],.mn[data-pid]');
+document.addEventListener('pointerdown', e => {
+  noClick = 0; hideTip(); clearTimeout(lp?.id); lp = null;
+  if (!cfg.tips || e.button > 0) return;
+  const t = lpTarget(e); if (!t) return;
+  lp = { x: e.clientX, y: e.clientY, id: setTimeout(() => { lp = null; noClick = Date.now(); describe(t) }, 450) };
+}, true);
+const lpCancel = () => { if (lp) { clearTimeout(lp.id); lp = null } };
+document.addEventListener('pointerup', lpCancel, true);
+document.addEventListener('pointercancel', lpCancel, true);
+document.addEventListener('scroll', lpCancel, true);
+document.addEventListener('pointermove', e => { if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) lpCancel() }, true);
+document.addEventListener('contextmenu', e => { if (cfg.tips && lpTarget(e)) e.preventDefault() }, true);
+document.addEventListener('click', e => { if (noClick && Date.now() - noClick < 1500) { e.stopPropagation(); e.preventDefault() } noClick = 0 }, true);
+
 // ---------- user card (tap a name) ----------
 $('#chat').addEventListener('click', e => {
   const n = e.target.closest('.nm'); if (n) return openCard(n);
@@ -976,7 +1091,8 @@ async function openCard(n, chOv) {
   const nm = document.createElement('b'); nm.textContent = n.textContent; nm.style.fontSize = '18px';
   const base = n.dataset.color || (n.style.color && n.style.color != 'transparent' ? n.style.color : ''); if (base) nm.style.color = base;
   let painted = false;
-  const addPaint = id => { if (painted || !id) return; painted = true; sevenUser(id).then(async st => { if (st?.paint_id) { const pt = await sevenPaint(st.paint_id); if (pt) paint(nm, pt) } }) };
+  if (base) nm.dataset.color = base;
+  const addPaint = id => { if (painted || !id) return; painted = true; applySeven(nm, null, id); setTimeout(() => { if (nm.dataset.sv != '1') applySeven(nm, null, id) }, 3000) };
   addPaint(uid);
   head.append(av, nm); card.append(head);
   const bv = row('Badges'); bv.textContent = '';
@@ -1080,7 +1196,11 @@ const FIELDS = {
     { k: 'fixc', t: 'bool', l: 'Fix hard-to-read name colors', h: 'Lightens (or darkens) colors that blend into the background' },
     ['h', 'Images'],
     { k: 'es', t: 'range', l: 'Emote size', min: 16, max: 72, u: 'px' },
-    { k: 'bs', t: 'range', l: 'Badge size', min: 12, max: 40, u: 'px' }
+    { k: 'bs', t: 'range', l: 'Badge size', min: 12, max: 40, u: 'px' },
+    ['h', 'Badges & paints'],
+    { k: 'badges', t: 'bool', l: 'Show badges' },
+    { k: 'paints', t: 'bool', l: 'Show 7TV name paints' },
+    { k: 'tips', t: 'bool', l: 'Press & hold for badge / paint info', h: 'Hold a badge or a painted name; the note stays until you tap elsewhere' }
   ],
   Chat: [
     ['h', 'Display'],
