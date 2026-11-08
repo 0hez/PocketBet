@@ -205,7 +205,7 @@ const j = async u => {
 };
 const hsl = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 60% ${cfg.theme == 'light' ? 35 : 65}%)` };
 const badges = (d, o) => { for (const [s, v] of Object.entries(d?.badge_sets || {})) for (const [k, x] of Object.entries(v.versions)) { o[s + '/' + k] = x.image_url_2x || x.image_url_1x; o['t:' + s + '/' + k] = x.title } };
-const seven = (l, o) => { for (const e of l || []) { const h = e.data?.host?.url; if (h) o[e.name] = fix(h) + '/2x.webp' } };
+const seven = (l, o) => { for (const e of l || []) { const h = e.data?.host?.url || (e.id ? '//cdn.7tv.app/emote/' + e.id : null); if (h && e.name) o[e.name] = fix(h) + '/2x.webp' } };
 const bttv = (l, o) => { for (const e of l || []) o[e.code] = `https://cdn.betterttv.net/emote/${e.id}/2x.webp` };
 
 // ---------- globals: Twitch badges, FFZ badges, 7TV/BTTV emotes ----------
@@ -1076,13 +1076,17 @@ async function loadMine() {
     const k = name + url; let im = prevCache.get(k);
     if (im) return im;
     im = new Image(); im.decoding = 'async'; im.alt = im.title = name;
-    const list = [...new Set([small(url), url, url.replace(/\.(webp|avif)$/, '.png')])]; let n = 0, t = 0;
-    const arm = () => { clearTimeout(t); im.src = list[n]; t = setTimeout(() => { if (!im.naturalWidth) fail() }, 3000) };
+    // 7TV: the one-frame static picture first (a few KB, so it appears at once), then the small animated one, then the bigger one.
+    // A source is only dropped when it errors out; a slow download is left to finish.
+    const seven7 = url.match(/^(.*\/emote\/[^/]+\/)\dx\.(webp|avif|png|gif)$/);
+    const list = seven7 ? [seven7[1] + '1x_static.webp', seven7[1] + '1x.webp', url, seven7[1] + '2x.png'] : [...new Set([small(url), url])];
+    let n = 0, t = 0;
+    const arm = () => { clearTimeout(t); im.src = list[n]; t = setTimeout(() => { if (!im.naturalWidth && n < list.length - 1) fail() }, n == 0 ? 2500 : 9000) };
     const fail = () => { clearTimeout(t); if (++n < list.length) arm(); else { prevCache.delete(k); im.onDead?.() } };
     im.onload = () => clearTimeout(t); im.onerror = fail;
     prevCache.set(k, im);
     if (prevCache.size > 400) prevCache.delete(prevCache.keys().next().value);
-    late ? setTimeout(arm, late) : arm(); // the first few start now, the rest a moment later so they cannot slow those down
+    late ? setTimeout(arm, late) : arm();
     return im;
   }
   // a button for one emote preview: a fixed-size placeholder shows at once, the emote fades in when it is ready
