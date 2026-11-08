@@ -25,6 +25,8 @@ button{background:var(--p);color:#fff;border:0;border-radius:8px;padding:0 14px;
 .m{padding:7px 10px;margin:0 -10px;border-bottom:1px solid #2e2e2e;word-break:break-word}
 .m:nth-child(even){background:#262626}
 .ts{color:#8a8a8a;font-size:13px}
+.nm{cursor:pointer}
+#card{padding:16px}
 .m.h{opacity:.6}
 .b{height:22px;width:22px;vertical-align:middle;margin-right:3px}
 .e{height:28px;vertical-align:middle;margin:0 1px}
@@ -44,6 +46,7 @@ dialog input{width:100%;margin:6px 0}
   <button id="add" aria-label="Add channel">+</button>
   <button id="cog" aria-label="Login">⚙</button>
 </nav>
+<dialog id="card"></dialog>
 <dialog id="dlg">
   <div>
     <b id="who">Login</b>
@@ -199,6 +202,9 @@ function mkMsg(m, c, hist) {
   const name = m.tags['display-name'] || m.nick;
   const color = fixColor(m.tags.color) || hsl(name);
   const n = document.createElement('b'); n.textContent = name; n.style.color = color;
+  n.className = 'nm'; n.dataset.login = m.nick || ''; n.dataset.uid = uid || '';
+  const bi = (m.tags['badge-info'] || '').split(',').find(x => /^(subscriber|founder)\//.test(x));
+  n.dataset.sub = bi ? bi.split('/')[1] : '';
   d.append(n, action ? ' ' : ': ');
 
   const root = action ? Object.assign(document.createElement('span'), { className: 'act' }) : d;
@@ -297,6 +303,53 @@ function open(name) {
 
 // ---------- UI ----------
 $('#add').onclick = () => { const n = prompt('Channel name'); if (n) open(n) };
+
+// ---------- user card (tap a name) ----------
+$('#chat').addEventListener('click', e => { const n = e.target.closest('.nm'); if (n) openCard(n) });
+const dateStr = iso => new Date(iso).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+function ago(iso) {
+  const a = new Date(iso), b = new Date();
+  let y = b.getFullYear() - a.getFullYear(), mo = b.getMonth() - a.getMonth(), d = b.getDate() - a.getDate();
+  if (d < 0) { mo--; d += new Date(b.getFullYear(), b.getMonth(), 0).getDate() }
+  if (mo < 0) { y--; mo += 12 }
+  return [y && y + 'y', mo && mo + 'm', (d || (!y && !mo)) && d + 'd'].filter(Boolean).join(' ');
+}
+async function openCard(n) {
+  const login = n.dataset.login, uid = n.dataset.uid, ch = cur, sub = n.dataset.sub;
+  const card = $('#card'); card.replaceChildren();
+  const row = (label) => {
+    const d = document.createElement('div'); d.style.margin = '10px 0';
+    const l = document.createElement('div'); l.style.cssText = 'color:#8a8a8a;font-size:13px'; l.textContent = label;
+    const v = document.createElement('div'); v.textContent = 'Loading…';
+    d.append(l, v); card.append(d); return v;
+  };
+  const head = document.createElement('div'); head.style.cssText = 'display:flex;align-items:center;gap:10px';
+  const av = new Image(); av.style.cssText = 'width:56px;height:56px;border-radius:50%;background:#333'; av.onerror = () => av.removeAttribute('src');
+  const nm = document.createElement('b'); nm.textContent = n.textContent; nm.style.cssText = n.style.cssText; nm.style.fontSize = '18px';
+  head.append(av, nm); card.append(head);
+  const fol = row('Following since'), sb = row('Subscription'), cr = row('Account created');
+  const cb = document.createElement('button'); cb.textContent = 'Close'; cb.style.cssText = 'width:100%;margin-top:6px'; cb.onclick = () => card.close();
+  card.append(cb); card.showModal();
+
+  const [hu, iv, sa] = await Promise.all([
+    uid ? hx('https://api.twitch.tv/helix/users?id=' + uid) : null,
+    j('https://api.ivr.fi/v2/twitch/user?login=' + encodeURIComponent(login)),
+    ch && login != ch ? j(`https://api.ivr.fi/v2/twitch/subage/${encodeURIComponent(login)}/${encodeURIComponent(ch)}`) : null
+  ]);
+  const u = hu?.data?.[0], i0 = Array.isArray(iv) ? iv[0] : null;
+  const created = u?.created_at || i0?.createdAt;
+  const avatar = u?.profile_image_url || i0?.logo;
+  if (avatar) av.src = avatar;
+  cr.textContent = created ? `${dateStr(created)} (${ago(created)} ago)` : 'Unavailable';
+  if (login == ch) fol.textContent = 'Channel owner';
+  else if (sa) fol.textContent = sa.followedAt ? `${dateStr(sa.followedAt)} (${ago(sa.followedAt)})` : 'Not following';
+  else fol.textContent = 'Unavailable';
+  const months = sub !== '' ? +sub : sa?.cumulative?.months;
+  const tier = sa?.meta?.tier;
+  sb.textContent = months != null
+    ? (months < 1 ? 'Subscribed (under 1 month)' : `${months} month${months == 1 ? '' : 's'}`) + (tier ? ' · Tier ' + tier : '')
+    : sa?.statusHidden ? 'Hidden' : sa ? 'Not subscribed' : 'Unavailable';
+}
 const CLIENT_ID = 'um9fx8q8bfbfuexpvlmrs0o7gi1p8i'; // optional: paste your Twitch Client ID here to skip the prompt
 $('#cog').onclick = () => {
   const on = !!(auth.u && auth.t);
