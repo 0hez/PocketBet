@@ -16,7 +16,11 @@ body{position:fixed;top:0;left:0;right:0;display:flex;will-change:height,transfo
 header,form{display:flex;gap:6px;padding:8px}
 form{padding-bottom:4px}
 body.kb #bar{display:none}
-body.kb form{padding-bottom:6px}
+body.kb form{padding:4px 8px 6px}
+body.kb input{padding:7px 10px}
+body.kb button{min-height:34px}
+body.kb .m{padding-top:calc(var(--pad)*.35);padding-bottom:calc(var(--pad)*.35)}
+body.kb .m.sys{font-size:.85em}
 #bar{display:flex;flex:none;align-items:center;gap:6px;padding:0 8px calc(8px + env(safe-area-inset-bottom))}
 input,select{flex:1;min-width:0;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:16px;font-family:inherit}
 button{background:var(--p);color:var(--pt);border:0;border-radius:8px;padding:0 14px;font-size:15px;min-height:40px;font-family:inherit}
