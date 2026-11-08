@@ -230,7 +230,7 @@ const svFlush = () => { clearTimeout(svT); svT = setTimeout(() => {
   trim(svu, 1500); trim(svp, 150); store.set(SVU, svu); store.set(SVP, svp);
 }, 2000) };
 let svBusy = 0; const svWait = [];
-const svSlot = async () => { if (svBusy >= 12) await new Promise(r => svWait.push(r)); svBusy++ };
+const svSlot = async () => { if (svBusy >= 20) await new Promise(r => svWait.push(r)); svBusy++ };
 const svDone = () => { svBusy--; svWait.shift()?.() };
 const sevenP = {}, sevenFail = {};
 // resolves to { badge_id, paint_id }, null (no 7TV cosmetics), or undefined (lookup failed: try again later)
@@ -276,14 +276,24 @@ const fetchPaint = id => gql('query($l:[ObjectID!]){cosmetics(list:$l){paints{id
 const infoP = {};
 const paintName = id => infoP['p' + id] ||= gql('query($l:[ObjectID!]){cosmetics(list:$l){paints{id name}}}', id).then(d => d?.data?.cosmetics?.paints?.[0]?.name || null).then(x => { if (!x) delete infoP['p' + id]; return x });
 const badgeInfo = id => infoP['b' + id] ||= gql('query($l:[ObjectID!]){cosmetics(list:$l){badges{id name tooltip}}}', id).then(d => d?.data?.cosmetics?.badges?.[0] || null).then(x => { if (!x) delete infoP['b' + id]; return x });
-function mkBadge(urls, title, k, bid) {
+const badgeOk = {}, badgeBad = {}; // 7TV badge id -> the url that worked / when every url last failed
+function mkBadge(urls, title, k, bid, onfail) {
   const i = new Image(); i.className = 'b'; i.title = i.alt = title; i.dataset.k = k; if (bid) i.dataset.bid = bid;
-  const all = [...urls, ...urls.map(u => u + '?r=1')]; let q = 0;
-  i.onerror = () => { if (++q < all.length) setTimeout(() => { i.src = all[q] }, 300 * q); else i.remove() };
-  i.src = all[0]; return i;
+  if (bid && badgeOk[bid]) urls = [badgeOk[bid], ...urls.filter(u => u != badgeOk[bid])]; // go straight to the format that worked before
+  const all = [...urls, ...urls.map(u => u + '?r=1')]; let q = 0, t = 0, done = false;
+  const next = () => {
+    clearTimeout(t); if (done) return;
+    if (++q < all.length) { setTimeout(() => { if (!done) arm(all[q]) }, q < urls.length ? 0 : 300) }
+    else { done = true; if (bid) badgeBad[bid] = Date.now(); i.remove(); onfail?.() }
+  };
+  // a slow or stalled download is given up on after a few seconds and the next size / format is tried
+  const arm = u => { clearTimeout(t); i.src = u; t = setTimeout(next, q == 0 ? 2500 : 3500) };
+  i.onload = () => { done = true; clearTimeout(t); if (bid) { badgeOk[bid] = all[q]; delete badgeBad[bid] } };
+  i.onerror = next;
+  arm(all[0]); return i;
 }
 // look a user's badge + paint up (and preload an image paint) BEFORE their message is drawn, so it appears already painted
-const prefetch7 = uid => sevenUser(uid).then(st => st?.paint_id ? sevenPaint(st.paint_id) : null)
+const prefetch7 = uid => sevenUser(uid).then(st => { if (st?.badge_id && !badgeOk[st.badge_id]) { const u = `https://cdn.7tv.app/badge/${st.badge_id}/2x.webp`, i = new Image(); i.onload = () => { badgeOk[st.badge_id] ||= u }; i.src = u } return st?.paint_id ? sevenPaint(st.paint_id) : null })
   .then(pt => pt?.function == 'URL' && pt.image_url ? new Promise(r => { const i = new Image(); i.onload = i.onerror = () => r(); i.src = fix(pt.image_url) }) : null).catch(() => null);
 // put a user's 7TV badge + paint on a name (n) and its badge strip (bs); anything that fails is retried by the sweep below
 async function applySeven(n, bs, uid) {
@@ -292,7 +302,10 @@ async function applySeven(n, bs, uid) {
   if (st === undefined) return;
   if (!st) { n.dataset.sv = '1'; return }
   let ok = true;
-  if (st.badge_id && bs && !bs.querySelector('[data-k="7tv"]')) { const u = `https://cdn.7tv.app/badge/${st.badge_id}/`; bs.append(mkBadge([u + '2x.webp', u + '2x.png', u + '1x.webp', u + '1x.png'], '7TV badge', '7tv', st.badge_id)) }
+  if (st.badge_id && bs && !bs.querySelector('[data-k="7tv"]')) {
+    if (badgeBad[st.badge_id] && Date.now() - badgeBad[st.badge_id] < 8000) ok = false; // just failed: the sweep tries again shortly
+    else { const u = `https://cdn.7tv.app/badge/${st.badge_id}/`; bs.append(mkBadge([u + '2x.webp', u + '1x.webp', u + '2x.png', u + '1x.png'], '7TV badge', '7tv', st.badge_id, () => { delete n.dataset.sv })) }
+  }
   if (st.paint_id) { const pt = await sevenPaint(st.paint_id); if (pt) paint(n, pt); else ok = false }
   if (ok) n.dataset.sv = '1';
 }
@@ -306,7 +319,7 @@ setInterval(() => {
       applySeven(n, null, k.uid);
     } else if (n.dataset.uid) applySeven(n, n.previousElementSibling, n.dataset.uid);
   }
-}, 2500);
+}, 1500);
 const rgba = n => { n >>>= 0; return `rgba(${n >>> 24},${(n >> 16) & 255},${(n >> 8) & 255},${((n & 255) / 255).toFixed(2)})` };
 function paint(el, p) {
   const st = (p.stops || []).map(x => `${rgba(x.color)} ${(x.at * 100).toFixed(1)}%`).join(',');
@@ -335,16 +348,19 @@ const fixColor = c => {
   return lum > .25 ? c : `rgb(${v.map(x => (x + 255) >> 1).join(',')})`;
 };
 async function loadGlobals() {
-  const [, ffz, s, b, bb, ch, dk] = await Promise.all([
+  const gc = store.get('sv:g', null); if (gc) Object.assign(G.emotes, gc.e); // last session's 7TV globals, instantly
+  const sg = j('https://7tv.io/v3/emote-sets/global').then(s => {
+    if (!s?.emotes) return; const o = {}; seven(s.emotes, o); Object.assign(G.emotes, o); store.set('sv:g', { e: o });
+    for (const k in chans) if (k[0] != '@') reEmote(chans[k]);
+  });
+  const [, ffz, b, bb, ch, dk] = await Promise.all([
     getBadges('g', null, G.badges),
     j('https://api.frankerfacez.com/v1/badges/ids'),
-    j('https://7tv.io/v3/emote-sets/global'),
     j('https://api.betterttv.net/3/cached/emotes/global'),
     j('https://api.betterttv.net/3/cached/badges'),
     j('https://api.chatterino.com/badges'),
     j('https://api.flxrs.com/api/badges/dank')
   ]);
-  seven(s?.emotes, G.emotes);
   bttv(b, G.emotes);
   for (const x of bb || []) if (x.badge?.svg) G.bttvBadge[x.providerId] = { u: x.badge.svg, t: x.badge.description || 'BetterTTV badge' };
   for (const x of ch?.badges || []) for (const u of x.users || []) (G.chatterino[u] ||= []).push({ u: x.image2 || x.image1, t: x.tooltip || 'Chatterino badge' });
@@ -453,18 +469,29 @@ function onIrc(m) {
 // emote image: retries, then other sizes/formats of the same emote, and finally shows the emote's name as text
 const emoteAlts = url => {
   let m;
-  if ((m = url.match(/^(.*\/)(\d)x\.(webp|avif|gif|png)$/))) return [m[1] + m[2] + 'x.png', m[1] + '1x.webp', m[1] + '1x.png'];   // 7TV / BTTV
+  if ((m = url.match(/^(.*\/)(\d)x\.(webp|avif|gif|png)$/))) return [m[1] + '1x.webp', m[1] + m[2] + 'x.png', m[1] + '1x.png'];   // 7TV / BTTV: the small webp first, it is the quickest fallback
   if ((m = url.match(/^(.*\/default\/)(dark|light)\/(\d\.0)$/))) return [m[1] + 'dark/1.0', m[1] + 'light/2.0'];                // Twitch
   if ((m = url.match(/^(.*\/emoticon\/\d+\/)(\d)$/))) return [m[1] + '1'];                                                      // FFZ
   return [];
 };
+const emoteOk = {}; // emote url -> the url that actually loaded last time
 function mkEmote(url, word, tp, c) {
   const s = document.createElement('span'); s.className = 'em' + (tp ? ' tp' : ''); s.dataset.t = word;
-  const i = new Image(); i.src = url; i.className = 'e'; i.alt = word;
-  i.onload = () => { if (c.pin) toBottom(c) };
-  const list = [url, ...emoteAlts(url), url + (url.includes('?') ? '&' : '?') + 'r=' + Date.now()];
-  let k = 0;
-  i.onerror = () => { if (++k < list.length) setTimeout(() => { i.src = list[k] }, 350 * k); else { s.classList.add('x'); s.textContent = word } };
+  const i = new Image(); i.className = 'e'; i.alt = word; i.decoding = 'async';
+  i.onload = () => { done = true; clearTimeout(t); emoteOk[url] = list[k]; if (c.pin) toBottom(c) };
+  let list = [url, ...emoteAlts(url), url + (url.includes('?') ? '&' : '?') + 'r=' + Date.now()];
+  if (emoteOk[url]) list = [emoteOk[url], ...list.filter(u => u != emoteOk[url])];
+  list = [...new Set(list)];
+  let k = 0, t = 0, done = false;
+  // a stalled / very slow download is dropped after a few seconds and a lighter version of the same emote is tried
+  const arm = () => { clearTimeout(t); i.src = list[k]; t = setTimeout(next, k == list.length - 1 ? 9000 : 3500) };
+  const next = () => {
+    clearTimeout(t); if (done) return;
+    if (++k < list.length) setTimeout(() => { if (!done) arm() }, 150 * k);
+    else { done = true; s.classList.add('x'); s.textContent = word }
+  };
+  i.onerror = next;
+  arm();
   s.append(i); return s;
 }
 // messages that arrived before the badge lists finished loading: add the missing badges (Twitch, FFZ, BTTV, Chatterino, DankChat)
@@ -674,17 +701,27 @@ $('#chat').addEventListener('click', e => { // tap a mention to jump to that cha
 // ---------- per-channel assets + chat history ----------
 async function load(c, room) {
   c.room = room;
+  // 7TV channel emotes: last session's list is used instantly, the fresh one replaces it as soon as it arrives,
+  // and neither waits for the other lists (badges, history, BTTV, FFZ ...)
+  const ck = 'sv:e:' + room, cc = store.get(ck, null);
+  if (cc) Object.assign(c.emotes, cc.e);
+  const svE = j(`https://7tv.io/v3/users/twitch/${room}`).then(s => {
+    const l = s?.emote_set?.emotes; if (!l) return;
+    const o = {}; seven(l, o); Object.assign(c.emotes, o); store.set(ck, { e: o, t: Date.now() });
+    const keys = Object.keys(localStorage).filter(x => x.startsWith('sv:e:')); // keep the cache small
+    if (keys.length > 12) { const old = keys.map(x => [x, store.get(x, {}).t || 0]).sort((a, b) => a[1] - b[1]).slice(0, keys.length - 12); for (const [x] of old) try { localStorage.removeItem(x) } catch {} }
+    if (c.el) reEmote(c);
+  });
+  if (cc) reEmote(c);
   await globalsReady;
-  const [, s, b, f, h, te] = await Promise.all([
+  const [, b, f, h, te] = await Promise.all([
     getBadges('c', room, c.badges, c.name),
-    j(`https://7tv.io/v3/users/twitch/${room}`),
     j(`https://api.betterttv.net/3/cached/users/twitch/${room}`),
     j(`https://api.frankerfacez.com/v1/room/id/${room}`),
     cfg.hist ? j(`https://recent-messages.robotty.de/api/v2/recent-messages/${c.name}?limit=100`) : null,
     hx('https://api.twitch.tv/helix/chat/emotes?broadcaster_id=' + room)
   ]);
   for (const e of te?.data || []) c.tw[e.name] = twUrl(e.id);
-  seven(s?.emote_set?.emotes, c.emotes);
   if (b) { bttv(b.channelEmotes, c.emotes); bttv(b.sharedEmotes, c.emotes) }
   for (const set of Object.values(f?.sets || {})) for (const e of set.emoticons || []) c.emotes[e.name] = fix(e.urls['2'] || e.urls['1']);
   const pre = [...new Set((h?.messages || []).map(l => /user-id=(\d+)/.exec(l)?.[1]).filter(Boolean))];
