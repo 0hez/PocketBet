@@ -1080,18 +1080,22 @@ async function loadMine() {
     if (prevCache.size > 400) prevCache.delete(prevCache.keys().next().value);
     const seven7 = url.match(/^(.*\/emote\/[^/]+\/)\dx\.(webp|avif|png|gif)$/);
     if (seven7) {
-      // 7TV: a one-frame still shows up right away, and the animated version replaces it the moment it has downloaded
-      const base = seven7[1], anims = [base + '1x.webp', base + '2x.webp', base + '2x.png'];
-      let ai = 0, animDone = false, stillOk = false;
-      const loadAnim = () => {
-        const a = new Image(); a.decoding = 'async';
-        a.onload = () => { animDone = true; im.src = a.src };   // already cached, so the swap is instant and it plays
-        a.onerror = () => { if (++ai < anims.length) loadAnim(); else if (!stillOk) im.onDead?.() };
-        a.src = anims[ai];
+      // The animated file is the picture that is shown (so it plays as soon as it has downloaded). While it is still
+      // coming in, a one-frame still of the same emote is drawn behind it, so there is never an empty box.
+      const base = seven7[1], anims = [base + '1x.webp', base + '2x.webp', base + '2x.png']; let ai = 0;
+      const ready = () => { if (!im._ready) { im._ready = true; im.dispatchEvent(new Event('ready')) } };
+      im.onload = ready;
+      im.onerror = () => { if (++ai < anims.length) im.src = anims[ai]; else { im.removeAttribute('src'); if (!im._still) { prevCache.delete(k); im.onDead?.() } } };
+      const still = new Image();
+      still.onload = () => {
+        im._still = true;
+        if (!im.naturalWidth) { // animated one not here yet: give the box the emote's real shape and paint the still in it
+          im.style.width = Math.round(46 * still.naturalWidth / still.naturalHeight) + 'px';
+          im.style.background = `url(${still.src}) center/contain no-repeat`;
+          ready();
+        }
       };
-      im.onload = () => { stillOk = true; im.onload = null };
-      im.onerror = () => { if (!animDone) im.onerror = null; /* no still: wait for the animated one */ };
-      const go = () => { im.src = base + '1x_static.webp'; loadAnim() };
+      const go = () => { still.src = base + '1x_static.webp'; im.src = anims[0] };
       late ? setTimeout(go, late) : go();
       return im;
     }
@@ -1103,7 +1107,7 @@ async function loadMine() {
   }
   // a button for one emote preview: a fixed-size placeholder shows at once, the emote fades in when it is ready
   function prevBtn(b, im) {
-    if (!im.naturalWidth) { b.classList.add('ld'); im.addEventListener('load', () => b.classList.remove('ld'), { once: true }) }
+    if (!im._ready && !im.naturalWidth) { b.classList.add('ld'); const f = () => b.classList.remove('ld'); im.addEventListener('load', f, { once: true }); im.addEventListener('ready', f, { once: true }) }
     im.onDead = () => b.remove();
     b.append(im);
   }
