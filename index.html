@@ -402,46 +402,7 @@ function sys(c, text) {
 }
 
 // ---------- @mention alerts: banner + sound ----------
-let customSnd = store.get('snd', null), actx = null, lastAlert = 0;
-const audioCtx = () => actx ||= new (window.AudioContext || window.webkitAudioContext)();
-// Alert sounds use Web Audio only and an "ambient" audio session, so they mix with whatever is already playing.
-// (Playing through an <audio> element makes iOS pause videos and music in other apps.)
-try { if (navigator.audioSession) navigator.audioSession.type = 'ambient' } catch {}
-const unlock = () => { try { const c = audioCtx(); if (c.state != 'running') c.resume() } catch {} };
-for (const t of ['touchend', 'click', 'keydown']) addEventListener(t, unlock, { capture: true });
-const TONES = {
-  ding: [[880, 0, .25, 'sine'], [1320, .08, .4, 'sine']],
-  chime: [[659, 0, .25, 'sine'], [784, .13, .25, 'sine'], [988, .26, .5, 'sine']],
-  bell: [[1047, 0, .9, 'sine'], [2093, 0, .5, 'sine'], [3136, 0, .25, 'sine']],
-  pop: [[420, 0, .09, 'triangle'], [260, .03, .09, 'triangle']],
-  blip: [[1200, 0, .07, 'square'], [1600, .09, .07, 'square']],
-  coin: [[988, 0, .08, 'square'], [1319, .08, .35, 'square']],
-  alert: [[740, 0, .16, 'sawtooth'], [740, .22, .16, 'sawtooth'], [988, .44, .25, 'sawtooth']]
-};
-function playWebAudio(v) {
-  try {
-    const ctx = audioCtx(); if (ctx.state != 'running') ctx.resume();
-    const t0 = ctx.currentTime;
-    for (const [f, st, d, type] of TONES[TONES[cfg.sound] ? cfg.sound : 'ding']) {
-      const o = ctx.createOscillator(), g = ctx.createGain(), peak = .4 * v * (type == 'sine' || type == 'triangle' ? 1 : .5);
-      o.type = type; o.frequency.value = f;
-      g.gain.setValueAtTime(.0001, t0 + st); g.gain.exponentialRampToValueAtTime(peak, t0 + st + .01); g.gain.exponentialRampToValueAtTime(.0001, t0 + st + d);
-      o.connect(g).connect(ctx.destination); o.start(t0 + st); o.stop(t0 + st + d + .02);
-    }
-  } catch {}
-}
-let customBuf = null, customFor = null;
-async function playCustom(v) {
-  const ctx = audioCtx(); if (ctx.state != 'running') ctx.resume();
-  if (customFor !== customSnd.data) { customBuf = await ctx.decodeAudioData(await (await fetch(customSnd.data)).arrayBuffer()); customFor = customSnd.data }
-  const src = ctx.createBufferSource(), g = ctx.createGain(); g.gain.value = v;
-  src.buffer = customBuf; src.connect(g).connect(ctx.destination); src.start();
-}
-function playSound() {
-  const v = cfg.vol / 100; if (cfg.sound == 'none' || !v) return;
-  if (cfg.sound == 'custom' && customSnd?.data) playCustom(v).catch(() => playWebAudio(v));
-  else playWebAudio(v);
-}
+let lastAlert = 0;
 function banner(c, who, text) {
   const box = $('#notis'), d = document.createElement('div'); d.className = 'noti';
   const h = document.createElement('b'); h.textContent = `@ ${who} · #${c.name}`;
@@ -457,7 +418,6 @@ function runAlert() {
   const a = alertQ.shift();
   if (!a) { alertTimer = 0; return }
   alertTimer = setTimeout(runAlert, 3500);
-  playSound();
   if (cfg.banner) banner(a.c, a.who, a.text);
   if (cfg.sysnoti && document.hidden) try { if (Notification.permission == 'granted') new Notification(`${a.who} mentioned you in #${a.c.name}`, { body: a.text }) } catch {}
 }
@@ -928,9 +888,6 @@ const FIELDS = {
     { k: 'banner', t: 'bool', l: 'Show a banner at the top', h: 'Tap it to jump to that chat' },
     { k: 'bdur', t: 'range', l: 'Banner stays for', min: 2, max: 20, u: 's' },
     { k: 'sysnoti', t: 'bool', l: 'System notification when app is in background', h: 'Asks permission; not supported in every browser', after: () => { if (cfg.sysnoti) try { Notification.requestPermission() } catch {} } },
-    ['h', 'Sound'],
-    { k: 'sound', t: 'sel', l: 'Sound', o: [['none', 'None'], ['ding', 'Ding'], ['chime', 'Chime'], ['bell', 'Bell'], ['pop', 'Pop'], ['blip', 'Blip'], ['coin', 'Coin'], ['alert', 'Alert'], ['custom', 'My own file']], after: () => playSound() },
-    { k: 'vol', t: 'range', l: 'Volume', min: 0, max: 100, step: 5, u: '%', after: () => playSound() }
   ],
   Send: [
     ['h', 'Hold to spam'],
@@ -1020,24 +977,7 @@ function acctQuick() {
   return [r, wide('Add account', () => { const id = CLIENT_ID || store.get('cid', ''); if (id) startLogin(id); else openSettings('Account') }, true)];
 }
 function alertExtras(sb) {
-  sb.append(wide('Test alert', () => { playSound(); banner({ name: cur || 'channel' }, 'someone', '@' + (auth.u || 'you') + ' this is a test mention') }, true));
-  const fi = el('input'); fi.type = 'file'; fi.accept = 'audio/*'; fi.hidden = true;
-  fi.onchange = () => {
-    const f = fi.files[0]; if (!f) return;
-    if (f.size > 1.5e6) { alert('Please pick a sound under 1.5 MB.'); return }
-    const r = new FileReader();
-    r.onload = () => {
-      store.set('snd', { name: f.name, data: r.result });
-      if (!store.get('snd')) { alert('That file is too large to save on this device.'); return }
-      customSnd = store.get('snd'); cfg.sound = 'custom'; saveCfg(); playSound(); renderSettings();
-    };
-    r.readAsDataURL(f);
-  };
-  sb.append(fi, wide('Choose my own sound file…', () => fi.click(), true));
-  if (customSnd) {
-    sb.append(kv('Custom sound', customSnd.name));
-    sb.append(wide('Remove custom sound', () => { customSnd = null; try { localStorage.removeItem('snd') } catch {} if (cfg.sound == 'custom') cfg.sound = 'ding'; saveCfg(); renderSettings() }, true));
-  }
+  sb.append(wide('Test alert', () => { banner({ name: cur || 'channel' }, 'someone', '@' + (auth.u || 'you') + ' this is a test mention') }, true));
 }
 function openSettings(t) { if (t) stab = t; renderSettings(); if (!$('#dlg').open) $('#dlg').showModal() }
 function renderSettings() {
