@@ -245,7 +245,7 @@ function open(name) {
 // ---------- UI ----------
 $('#join').onclick = () => { open($('#ch').value); $('#ch').value = '' };
 $('#ch').onkeydown = e => { if (e.key == 'Enter') $('#join').click() };
-const CLIENT_ID = ''; // optional: paste your Twitch Client ID here to skip the prompt
+const CLIENT_ID = 'um9fx8q8bfbfuexpvlmrs0o7gi1p8i'; // optional: paste your Twitch Client ID here to skip the prompt
 $('#cog').onclick = () => {
   const on = !!(auth.u && auth.t);
   $('#who').textContent = on ? 'Logged in as ' + auth.u : 'Login';
