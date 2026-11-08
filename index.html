@@ -6,55 +6,84 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Chat</title>
 <style>
-:root{color-scheme:dark;--bg:#202020;--fg:#efeff1;--p:#9147ff}
+:root{color-scheme:dark;--bg:#202020;--fg:#efeff1;--p:#9147ff;--pt:#fff;--card:#18181b;--line:#333;--rowline:#2e2e2e;--alt:#262626;--chip:#26262c;--mut:#8a8a8a;--fs:15px;--es:28px;--bs:22px;--pad:7px;--hl:#ffb300;--ff:system-ui,sans-serif}
+:root[data-theme=black]{--bg:#000;--card:#0b0b0d;--line:#2a2a2a;--rowline:#1a1a1a;--alt:#0b0b0b;--chip:#16161a}
+:root[data-theme=light]{color-scheme:light;--bg:#fff;--fg:#0e0e10;--card:#f4f4f5;--line:#d4d4d8;--rowline:#e4e4e7;--alt:#f6f6f8;--chip:#e9e9ee;--mut:#6b6b75}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-body{display:flex;flex-direction:column;height:100dvh;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif;padding-top:env(safe-area-inset-top)}
+body{display:flex;flex-direction:column;height:100dvh;background:var(--bg);color:var(--fg);font:var(--fs)/1.5 var(--ff);padding-top:env(safe-area-inset-top)}
 header,form{display:flex;gap:6px;padding:8px}
 form{padding-bottom:4px}
 #bar{display:flex;align-items:center;gap:6px;padding:0 8px calc(8px + env(safe-area-inset-bottom))}
-input{flex:1;min-width:0;background:#18181b;color:var(--fg);border:1px solid #333;border-radius:8px;padding:10px;font-size:16px}
-button{background:var(--p);color:#fff;border:0;border-radius:8px;padding:0 14px;font-size:15px;min-height:40px}
+input,select{flex:1;min-width:0;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:16px;font-family:inherit}
+button{background:var(--p);color:var(--pt);border:0;border-radius:8px;padding:0 14px;font-size:15px;min-height:40px;font-family:inherit}
+button.sec{background:var(--chip);color:var(--fg)}
+#send{touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;min-width:64px}
+#send.hot{background:#e91916;color:#fff}
 #tabs{display:flex;overflow-x:auto;gap:4px;flex:1;min-width:0}
-#tabs button{background:#26262c;white-space:nowrap;min-height:34px;padding:0 12px}
-#tabs .on{background:var(--p)}
+#tabs button{background:var(--chip);color:var(--fg);white-space:nowrap;min-height:34px;padding:0 12px}
+#tabs .on{background:var(--p);color:var(--pt)}
 #tabs .new{outline:2px solid var(--p)}
 #chat{flex:1;min-height:0;display:flex;flex-direction:column}
 .log{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 10px;display:none;overscroll-behavior:contain}
 .log.on{display:block}
-.m{padding:7px 10px;margin:0 -10px;border-bottom:1px solid #2e2e2e;word-break:break-word}
-.m:nth-child(even){background:#262626}
-.ts{color:#8a8a8a;font-size:13px}
+.m{padding:var(--pad) 10px;margin:0 -10px;border-bottom:1px solid var(--rowline);word-break:break-word}
+.m:nth-child(even){background:var(--alt)}
+.noalt .m:nth-child(even){background:none}
+.m.hl{background:color-mix(in srgb,var(--hl) 22%,transparent)!important;box-shadow:inset 3px 0 var(--hl)}
+.m.sys{color:var(--mut);font-style:italic;font-size:.9em}
+.ts{color:var(--mut);font-size:.87em}
+.nots .ts{display:none}
 .nm{cursor:pointer}
-#card{padding:16px}
 .m.h{opacity:.6}
-.b{height:22px;width:22px;vertical-align:middle;margin-right:3px}
-.e{height:28px;vertical-align:middle;margin:0 1px}
+.b{height:var(--bs);width:var(--bs);vertical-align:middle;margin-right:3px}
+.bd-tw .t3,.bd-none .b{display:none}
+.e{height:var(--es);vertical-align:middle;margin:0 1px}
+.noemote .em:not(.x) img,.notp .em.tp:not(.x) img{display:none}
+.noemote .em:not(.x)::before,.notp .em.tp:not(.x)::before{content:attr(data-t)}
 .act{font-style:italic}
-dialog{background:#18181b;color:var(--fg);border:1px solid #333;border-radius:12px;width:min(90vw,380px)}
-dialog input{width:100%;margin:6px 0}
+dialog{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:12px;width:min(94vw,440px);padding:0}
+dialog::backdrop{background:#0009}
+#card{padding:16px}
+#dlg[open]{display:flex;flex-direction:column;max-height:86dvh}
+#dh{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;flex:none}
+#dh button{min-height:34px}
+#st{display:flex;gap:4px;overflow-x:auto;padding:0 12px 8px;flex:none}
+#st button{background:var(--chip);color:var(--fg);min-height:34px;padding:0 14px}
+#st .on{background:var(--p);color:var(--pt)}
+#sb{overflow-y:auto;padding:0 14px 14px;flex:1;min-height:0}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--rowline)}
+.row>span:first-child{flex:1;min-width:0}
+.row small{display:block;color:var(--mut);font-size:12px;line-height:1.3}
+.row input[type=checkbox]{flex:none;width:22px;height:22px;padding:0;accent-color:var(--p)}
+.row input[type=range]{width:42%;flex:none;padding:0;border:0;background:none;accent-color:var(--p)}
+.row input[type=color]{flex:none;width:56px;height:34px;padding:2px}
+.row input[type=text]{width:55%;flex:none}
+.row select{flex:none;max-width:55%}
+.row .val{color:var(--mut);font-size:13px;min-width:34px;text-align:right}
+.grp{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 2px}
+.note{color:var(--mut);font-size:13px;margin:8px 0}
+.kv{display:flex;justify-content:space-between;padding:4px 0;font-size:14px}
+.kv span:first-child{color:var(--mut)}
+#sb .wide{width:100%;margin-top:8px}
 </style>
 </head>
 <body>
 <div id="chat"></div>
 <form id="f">
-  <input id="in" placeholder="Send a message" autocomplete="off">
-  <button>Send</button>
+  <input id="in" placeholder="Send a message" autocomplete="off" enterkeyhint="send">
+  <button id="send">Send</button>
 </form>
 <nav id="bar">
   <div id="tabs"></div>
   <button id="add" aria-label="Add channel">+</button>
-  <button id="cog" aria-label="Login">⚙</button>
+  <button id="cog" aria-label="Settings">⚙</button>
 </nav>
 <dialog id="card"></dialog>
 <dialog id="dlg">
-  <div>
-    <b id="who">Login</b>
-    <input id="cid" placeholder="Twitch Client ID (one-time)" autocapitalize="none" autocomplete="off">
-    <button id="login" style="width:100%">Login with Twitch</button>
-    <button id="logout" style="width:100%;background:#26262c;margin-top:6px">Log out</button>
-    <button id="close" style="width:100%;background:#26262c;margin-top:6px">Close</button>
-  </div>
+  <div id="dh"><b>Settings</b><button id="close" class="sec" aria-label="Close">✕</button></div>
+  <div id="st"></div>
+  <div id="sb"></div>
 </dialog>
 <script>
 const $ = s => document.querySelector(s);
@@ -65,10 +94,36 @@ const store = {
 const G = { badges: {}, ffz: {}, emotes: {}, bttvBadge: {}, chatterino: {}, dank: {} };
 const chans = {};
 let cur = null, ws = null, auth = store.get('auth', {});
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ---------- settings (saved per Twitch account, guests share "guest") ----------
+const DEF = {
+  theme: 'dark', accent: '#9147ff', font: 'sys', fs: 15, pad: 7, alt: true, fixc: true, es: 28, bs: 22,
+  ts: true, h12: false, badges: 'all', emotes: true, tpemotes: true, paints: true, hist: true, max: 500,
+  hl: true, hlc: '#ffb300', mutew: '', muteu: '',
+  spam: true, hold: 400, modburst: true, dupfix: true, maxspam: 0
+};
+const FONTS = { sys: 'system-ui,sans-serif', serif: 'Georgia,serif', mono: 'ui-monospace,Menlo,Consolas,monospace', round: 'ui-rounded,"Segoe UI",system-ui,sans-serif' };
+const ckey = () => 'cfg:' + (auth.u || 'guest');
+const loadCfg = () => ({ ...DEF, ...store.get(ckey(), store.get('cfg:guest', {})) });
+let cfg = loadCfg();
+const saveCfg = () => store.set(ckey(), cfg);
+const ink = hex => { const v = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)); return (.2126 * v[0] + .7152 * v[1] + .0722 * v[2]) / 255 > .6 ? '#000' : '#fff' };
+function applyCfg() {
+  const r = document.documentElement, s = r.style;
+  r.dataset.theme = cfg.theme;
+  s.setProperty('--p', cfg.accent); s.setProperty('--pt', ink(cfg.accent));
+  s.setProperty('--fs', cfg.fs + 'px'); s.setProperty('--es', cfg.es + 'px'); s.setProperty('--bs', cfg.bs + 'px');
+  s.setProperty('--pad', cfg.pad + 'px'); s.setProperty('--hl', cfg.hlc); s.setProperty('--ff', FONTS[cfg.font] || FONTS.sys);
+  const b = document.body.classList;
+  b.toggle('nots', !cfg.ts); b.toggle('noalt', !cfg.alt); b.toggle('noemote', !cfg.emotes); b.toggle('notp', !cfg.tpemotes);
+  b.toggle('bd-tw', cfg.badges == 'tw'); b.toggle('bd-none', cfg.badges == 'none');
+}
+applyCfg();
 
 const fix = u => u.startsWith('//') ? 'https:' + u : u;
 const j = async u => { try { const r = await fetch(u); return r.ok ? await r.json() : null } catch { return null } };
-const hsl = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 60% 65%)` };
+const hsl = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 60% ${cfg.theme == 'light' ? 35 : 65}%)` };
 const badges = (d, o) => { for (const [s, v] of Object.entries(d?.badge_sets || {})) for (const [k, x] of Object.entries(v.versions)) o[s + '/' + k] = x.image_url_2x || x.image_url_1x };
 const seven = (l, o) => { for (const e of l || []) { const h = e.data?.host?.url; if (h) o[e.name] = fix(h) + '/2x.webp' } };
 const bttv = (l, o) => { for (const e of l || []) o[e.code] = `https://cdn.betterttv.net/emote/${e.id}/2x.webp` };
@@ -103,8 +158,11 @@ function paint(el, p) {
 }
 const fixColor = c => {
   if (!c || c.length != 7) return null;
+  if (!cfg.fixc) return c;
   const v = [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
-  return (.2126 * v[0] + .7152 * v[1] + .0722 * v[2]) / 255 > .25 ? c : `rgb(${v.map(x => (x + 255) >> 1).join(',')})`;
+  const lum = (.2126 * v[0] + .7152 * v[1] + .0722 * v[2]) / 255;
+  if (cfg.theme == 'light') return lum < .65 ? c : `rgb(${v.map(x => (x * .55) | 0).join(',')})`;
+  return lum > .25 ? c : `rgb(${v.map(x => (x + 255) >> 1).join(',')})`;
 };
 async function loadGlobals() {
   const [, ffz, s, b, bb, ch, dk] = await Promise.all([
@@ -161,18 +219,32 @@ function connect() {
   };
   ws.onclose = () => setTimeout(connect, 3000);
 }
-function reconnect() { if (ws) { ws.onclose = null; ws.close() } connect() }
+function reconnect() { if (spam) spam.stop = true; if (ws) { ws.onclose = null; ws.close() } connect() }
+
+const list = s => (s || '').toLowerCase().split(/[,\n]+/).map(x => x.trim().replace(/^@/, '')).filter(Boolean);
+function muted(m) {
+  if (list(cfg.muteu).includes((m.nick || '').toLowerCase())) return true;
+  const t = (m.trailing || '').toLowerCase();
+  return list(cfg.mutew).some(w => t.includes(w));
+}
 
 function onIrc(m) {
   if (m.cmd == 'NOTICE' && /authentication failed|improperly formatted auth/i.test(m.trailing || '')) {
-    auth = {}; store.set('auth', auth); reconnect();
+    auth = {}; store.set('auth', auth); cfg = loadCfg(); applyCfg(); reconnect();
     alert('Twitch login expired. Tap ⚙ to log in again.'); return;
   }
   const c = chans[(m.params[0] || '').replace('#', '')];
   if (!c) return;
-  if (m.cmd == 'PRIVMSG') push(c, mkMsg(m, c));
-  else if (m.cmd == 'ROOMSTATE' && !c.room && m.tags['room-id']) load(c, m.tags['room-id']);
+  if (m.cmd == 'PRIVMSG') { if (!muted(m)) push(c, mkMsg(m, c)) }
+  else if (m.cmd == 'ROOMSTATE') {
+    if ('slow' in m.tags) c.slow = +m.tags.slow || 0;
+    if (!c.room && m.tags['room-id']) load(c, m.tags['room-id']);
+  }
   else if (m.cmd == 'USERSTATE') c.me = m.tags;
+  else if (m.cmd == 'NOTICE' && m.tags['msg-id']) {
+    sys(c, m.trailing || m.tags['msg-id']);
+    if (spam && /^msg_/.test(m.tags['msg-id'])) spam.stop = true; // Twitch refused a message: stop immediately
+  }
 }
 
 // ---------- message rendering ----------
@@ -181,22 +253,24 @@ function mkMsg(m, c, hist) {
   if (text.startsWith('\x01ACTION ')) { action = true; text = text.slice(8).replace(/\x01/g, '') }
   const d = document.createElement('div');
   d.className = 'm' + (hist ? ' h' : '');
-  const img = (url, cls, parent, alt) => { const i = new Image(); i.src = url; i.className = cls; i.loading = 'lazy'; i.onerror = () => alt ? i.replaceWith(alt) : i.remove(); parent.append(i) };
+  const img = (url, cls, parent) => { const i = new Image(); i.src = url; i.className = cls; i.loading = 'lazy'; i.onerror = () => i.remove(); parent.append(i) };
+  if (cfg.hl && auth.u && (m.nick || '').toLowerCase() != auth.u.toLowerCase() &&
+      new RegExp('(^|\\W)@?' + auth.u.replace(/\W/g, '') + '(?!\\w)', 'i').test(text)) d.classList.add('hl');
 
   const tm = document.createElement('span'); tm.className = 'ts';
-  tm.textContent = new Date(+m.tags['tmi-sent-ts'] || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) + ' ';
+  tm.textContent = new Date(+m.tags['tmi-sent-ts'] || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: cfg.h12 }) + ' ';
   d.append(tm);
   const bs = document.createElement('span'); d.append(bs);
   const uid = m.tags['user-id'];
   for (const b of (m.tags.badges || '').split(',')) { const u = c.badges[b] || G.badges[b]; if (u) img(u, 'b', bs) }
-  for (const u of G.ffz[uid] || []) img(u, 'b', bs);
-  if (G.bttvBadge[uid]) img(G.bttvBadge[uid], 'b', bs);
-  for (const x of G.chatterino[uid] || []) img(x, 'b', bs);
-  for (const x of G.dank[uid] || []) img(x, 'b', bs);
+  for (const u of G.ffz[uid] || []) img(u, 'b t3', bs);
+  if (G.bttvBadge[uid]) img(G.bttvBadge[uid], 'b t3', bs);
+  for (const x of G.chatterino[uid] || []) img(x, 'b t3', bs);
+  for (const x of G.dank[uid] || []) img(x, 'b t3', bs);
   if (uid) sevenUser(uid).then(async st => {
     if (!st) return;
-    if (st.badge_id) img(`https://cdn.7tv.app/badge/${st.badge_id}/2x.webp`, 'b', bs);
-    if (st.paint_id) { const pt = await sevenPaint(st.paint_id); if (pt) paint(n, pt) }
+    if (st.badge_id) img(`https://cdn.7tv.app/badge/${st.badge_id}/2x.webp`, 'b t3', bs);
+    if (st.paint_id && cfg.paints) { const pt = await sevenPaint(st.paint_id); if (pt) paint(n, pt) }
   });
 
   const name = m.tags['display-name'] || m.nick;
@@ -209,6 +283,14 @@ function mkMsg(m, c, hist) {
 
   const root = action ? Object.assign(document.createElement('span'), { className: 'act' }) : d;
   if (action) { root.style.color = color; d.append(root) }
+
+  // emote = <span class="em" data-t="word"><img></span>; CSS swaps it for the text when emotes are turned off
+  const emote = (url, word, tp) => {
+    const s = document.createElement('span'); s.className = 'em' + (tp ? ' tp' : ''); s.dataset.t = word;
+    const i = new Image(); i.src = url; i.className = 'e'; i.alt = word; i.loading = 'lazy';
+    i.onerror = () => { s.classList.add('x'); s.textContent = word };
+    s.append(i); root.append(s);
+  };
 
   const native = {};
   for (const e of (m.tags.emotes || '').split('/')) {
@@ -223,14 +305,14 @@ function mkMsg(m, c, hist) {
     w.forEach((word, i) => {
       const sp = i < w.length - 1 ? ' ' : '';
       const u = c.emotes[word] || G.emotes[word];
-      if (u) { img(u, 'e', root, word); root.append(sp) } else root.append(word + sp);
+      if (u) { emote(u, word, true); root.append(sp) } else root.append(word + sp);
     });
     buf = '';
   };
   const rs = [...text];
   for (let i = 0; i < rs.length; i++) {
     const n2 = native[i];
-    if (n2) { flush(); img(`https://static-cdn.jtvnw.net/emoticons/v2/${n2[1]}/default/dark/2.0`, 'e', root, rs.slice(i, n2[0] + 1).join('')); i = n2[0]; continue }
+    if (n2) { flush(); emote(`https://static-cdn.jtvnw.net/emoticons/v2/${n2[1]}/default/dark/2.0`, rs.slice(i, n2[0] + 1).join(''), false); i = n2[0]; continue }
     buf += rs[i];
   }
   flush();
@@ -240,9 +322,12 @@ function mkMsg(m, c, hist) {
 function push(c, el) {
   const atBottom = c.el.scrollHeight - c.el.scrollTop - c.el.clientHeight < 80;
   c.el.append(el);
-  while (c.el.children.length > 500) c.el.firstChild.remove();
+  while (c.el.children.length > cfg.max) c.el.firstChild.remove();
   if (atBottom) c.el.scrollTop = c.el.scrollHeight;
   if (cur != c.name) { c.unread = true; tabs() }
+}
+function sys(c, text) {
+  const d = document.createElement('div'); d.className = 'm sys'; d.textContent = text; push(c, d);
 }
 
 // ---------- per-channel assets + chat history ----------
@@ -254,13 +339,13 @@ async function load(c, room) {
     j(`https://7tv.io/v3/users/twitch/${room}`),
     j(`https://api.betterttv.net/3/cached/users/twitch/${room}`),
     j(`https://api.frankerfacez.com/v1/room/id/${room}`),
-    j(`https://recent-messages.robotty.de/api/v2/recent-messages/${c.name}?limit=100`)
+    cfg.hist ? j(`https://recent-messages.robotty.de/api/v2/recent-messages/${c.name}?limit=100`) : null
   ]);
   seven(s?.emote_set?.emotes, c.emotes);
   if (b) { bttv(b.channelEmotes, c.emotes); bttv(b.sharedEmotes, c.emotes) }
   for (const set of Object.values(f?.sets || {})) for (const e of set.emoticons || []) c.emotes[e.name] = fix(e.urls['2'] || e.urls['1']);
   const frag = document.createDocumentFragment();
-  for (const l of h?.messages || []) { const m = parse(l); if (m && m.cmd == 'PRIVMSG') frag.append(mkMsg(m, c, true)) }
+  for (const l of h?.messages || []) { const m = parse(l); if (m && m.cmd == 'PRIVMSG' && !muted(m)) frag.append(mkMsg(m, c, true)) }
   c.el.prepend(frag);
   if (cur == c.name) c.el.scrollTop = c.el.scrollHeight;
 }
@@ -294,12 +379,89 @@ function open(name) {
   if (!chans[name]) {
     const el = document.createElement('div'); el.className = 'log';
     $('#chat').append(el);
-    chans[name] = { name, el, badges: {}, emotes: {}, room: null };
+    chans[name] = { name, el, badges: {}, emotes: {}, room: null, slow: 0 };
     store.set('chs', Object.keys(chans));
     if (ws && ws.readyState == 1) ws.send('JOIN #' + name);
   }
   show(name);
 }
+
+// ---------- sending, rate limits, hold-to-spam ----------
+// Twitch chat limits per 30s: 20 messages for regular chatters, 100 for moderators/broadcaster.
+// Slow mode (per-channel delay) doesn't apply to mods/broadcaster/VIPs.
+const WINDOW = 30000 + 150;            // 30s window + small margin for network jitter
+const sentLog = [];                     // timestamps of recent sends
+const hasBadge = (c, re) => !!c?.me && re.test(c.me.badges || '');
+const isMod = c => !!c && (c.me?.mod == '1' || hasBadge(c, /(^|,)(moderator|broadcaster|staff|admin|global_mod)\//) || (!!auth.u && c.name == auth.u.toLowerCase()));
+const slowExempt = c => isMod(c) || hasBadge(c, /(^|,)vip\//);
+const limitFor = c => cfg.modburst && isMod(c) ? 100 : 20;
+const roleOf = c => c.name == (auth.u || '').toLowerCase() ? 'Broadcaster' : isMod(c) ? 'Moderator' : hasBadge(c, /(^|,)vip\//) ? 'VIP' : 'Chatter';
+
+// ms until the next message may be sent (0 = now). pacing=true also spreads sends evenly while spamming.
+function waitFor(c, pacing) {
+  const now = Date.now(), lim = limitFor(c);
+  while (sentLog.length && now - sentLog[0] > WINDOW) sentLog.shift();
+  let w = sentLog.length >= lim ? sentLog[sentLog.length - lim] + WINDOW - now : 0;
+  if (c.slow && !slowExempt(c)) w = Math.max(w, (c.lastSent || 0) + c.slow * 1000 + 120 - now);
+  if (pacing) w = Math.max(w, (c.lastSent || 0) + (lim > 20 ? 15 : Math.ceil(WINDOW / lim)) - now);
+  return Math.max(0, Math.ceil(w));
+}
+
+function sendMsg(c, text) {
+  if (!ws || ws.readyState != 1) return false;
+  let wire = text;
+  if (cfg.dupfix && wire === c.lastWire) wire = text + ' \u{E0000}'; // Twitch blocks identical consecutive messages
+  ws.send(`PRIVMSG #${c.name} :${wire}`);
+  const now = Date.now();
+  sentLog.push(now); c.lastSent = now; c.lastWire = wire;
+  push(c, mkMsg({ tags: { ...(c.me || {}), 'display-name': auth.u, 'user-id': auth.id, emotes: '' }, trailing: text, nick: auth.u }, c));
+  return true;
+}
+
+let spam = null, blockSubmit = 0;
+const sendBtn = $('#send');
+function startSpam() {
+  const c = chans[cur], text = $('#in').value.trim().slice(0, 500);
+  if (!c || !text || !(auth.u && auth.t) || spam) return false;
+  const s = spam = { n: 0, stop: false };
+  sendBtn.classList.add('hot'); sendBtn.textContent = '×0';
+  (async () => {
+    while (!s.stop) {
+      const w = waitFor(c, true);
+      if (w > 0) { await sleep(Math.min(w, 200)); continue } // short naps so releasing the button stops instantly
+      if (!sendMsg(c, text)) break;
+      sendBtn.textContent = '×' + (++s.n);
+      if (cfg.maxspam && s.n >= cfg.maxspam) break;
+    }
+    if (spam === s) spam = null;
+    sendBtn.classList.remove('hot'); sendBtn.textContent = 'Send';
+    if (s.n) { $('#in').value = ''; sys(c, `Spam sent ${s.n} message${s.n == 1 ? '' : 's'}.`) }
+  })();
+  return true;
+}
+{
+  let holdT = null, held = false;
+  sendBtn.addEventListener('pointerdown', e => {
+    if (e.button || !cfg.spam) return;
+    held = false; clearTimeout(holdT);
+    holdT = setTimeout(() => { held = startSpam() }, cfg.hold);
+  });
+  const rel = () => { clearTimeout(holdT); if (spam) spam.stop = true; if (held) { blockSubmit = Date.now() + 500; held = false } };
+  for (const t of ['pointerup', 'pointercancel', 'pointerleave']) sendBtn.addEventListener(t, rel);
+  sendBtn.addEventListener('contextmenu', e => e.preventDefault());
+  sendBtn.addEventListener('mousedown', e => e.preventDefault()); // keep the keyboard / input focus
+  $('#in').addEventListener('keydown', e => { if (e.key == 'Enter' && e.repeat) e.preventDefault() });
+}
+
+$('#f').onsubmit = e => {
+  e.preventDefault();
+  if (Date.now() < blockSubmit) return;
+  const text = $('#in').value.trim().slice(0, 500); if (!text || !cur) return;
+  if (!(auth.u && auth.t)) { openSettings('Account'); return }
+  const c = chans[cur], w = waitFor(c);
+  if (w > 0) { sys(c, `Rate limit: wait ${(w / 1000).toFixed(1)}s before sending.`); return }
+  if (sendMsg(c, text)) $('#in').value = '';
+};
 
 // ---------- UI ----------
 $('#add').onclick = () => { const n = prompt('Channel name'); if (n) open(n) };
@@ -307,7 +469,7 @@ $('#add').onclick = () => { const n = prompt('Channel name'); if (n) open(n) };
 // ---------- user card (tap a name) ----------
 $('#chat').addEventListener('click', e => { const n = e.target.closest('.nm'); if (n) openCard(n) });
 const dateStr = iso => new Date(iso).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
-function ago(iso) {
+function ago(iso) { // kept for when followage comes back
   const a = new Date(iso), b = new Date();
   let y = b.getFullYear() - a.getFullYear(), mo = b.getMonth() - a.getMonth(), d = b.getDate() - a.getDate();
   if (d < 0) { mo--; d += new Date(b.getFullYear(), b.getMonth(), 0).getDate() }
@@ -319,63 +481,174 @@ async function openCard(n) {
   const card = $('#card'); card.replaceChildren();
   const row = (label) => {
     const d = document.createElement('div'); d.style.margin = '10px 0';
-    const l = document.createElement('div'); l.style.cssText = 'color:#8a8a8a;font-size:13px'; l.textContent = label;
+    const l = document.createElement('div'); l.style.cssText = 'color:var(--mut);font-size:13px'; l.textContent = label;
     const v = document.createElement('div'); v.textContent = 'Loading…';
     d.append(l, v); card.append(d); return v;
   };
   const head = document.createElement('div'); head.style.cssText = 'display:flex;align-items:center;gap:10px';
-  const av = new Image(); av.style.cssText = 'width:56px;height:56px;border-radius:50%;background:#333'; av.onerror = () => av.removeAttribute('src');
+  const av = new Image(); av.style.cssText = 'width:56px;height:56px;border-radius:50%;background:var(--chip)'; av.onerror = () => av.removeAttribute('src');
   const nm = document.createElement('b'); nm.textContent = n.textContent; nm.style.cssText = n.style.cssText; nm.style.fontSize = '18px';
   head.append(av, nm); card.append(head);
   const fol = row('Following since'), sb = row('Subscription'), cr = row('Account created');
   const cb = document.createElement('button'); cb.textContent = 'Close'; cb.style.cssText = 'width:100%;margin-top:6px'; cb.onclick = () => card.close();
   card.append(cb); card.showModal();
+  fol.textContent = 'N/A'; // followage disabled for now
 
-  const [hu, iv, sa, hf] = await Promise.all([
+  const [hu, iv, sa] = await Promise.all([
     uid ? hx('https://api.twitch.tv/helix/users?id=' + uid) : null,
     j('https://api.ivr.fi/v2/twitch/user?login=' + encodeURIComponent(login)),
-    ch && login != ch ? j(`https://api.ivr.fi/v2/twitch/subage/${encodeURIComponent(login)}/${encodeURIComponent(ch)}`) : null,
-    uid && ch && chans[ch]?.room && login != ch ? hx(`https://api.twitch.tv/helix/channels/followers?broadcaster_id=${chans[ch].room}&user_id=${uid}`) : null
+    ch && login != ch ? j(`https://api.ivr.fi/v2/twitch/subage/${encodeURIComponent(login)}/${encodeURIComponent(ch)}`) : null
   ]);
   const u = hu?.data?.[0], i0 = Array.isArray(iv) ? iv[0] : null;
   const created = u?.created_at || i0?.createdAt;
   const avatar = u?.profile_image_url || i0?.logo;
   if (avatar) av.src = avatar;
   cr.textContent = created ? dateStr(created) : 'Unavailable';
-  const fd = hf?.data ? (hf.data[0]?.followed_at || null) : sa?.followedAt;
-  if (login == ch) fol.textContent = 'Channel owner';
-  else if (fd) fol.textContent = `${dateStr(fd)} (${ago(fd)} ago)`;
-  else if (hf?.data) fol.textContent = 'Not following';
-  else fol.textContent = 'Unavailable (log in again as a mod of this channel)';
   const months = sub !== '' ? +sub : sa?.cumulative?.months;
   const tier = sa?.meta?.tier;
   sb.textContent = months != null
     ? (months < 1 ? 'Subscribed (under 1 month)' : `${months} month${months == 1 ? '' : 's'}`) + (tier ? ' · Tier ' + tier : '')
     : sa?.statusHidden ? 'Hidden' : sa ? 'Not subscribed' : 'Unavailable';
 }
+
+// ---------- settings panel ----------
 const CLIENT_ID = 'um9fx8q8bfbfuexpvlmrs0o7gi1p8i'; // optional: paste your Twitch Client ID here to skip the prompt
-$('#cog').onclick = () => {
-  const on = !!(auth.u && auth.t);
-  $('#who').textContent = on ? 'Logged in as ' + auth.u : 'Login';
-  $('#login').style.display = on ? 'none' : '';
-  $('#logout').style.display = on ? '' : 'none';
-  $('#cid').style.display = (on || CLIENT_ID) ? 'none' : '';
-  $('#cid').value = store.get('cid', '');
-  $('#dlg').showModal();
+const FIELDS = {
+  Look: [
+    ['h', 'Theme'],
+    { k: 'theme', t: 'sel', l: 'Theme', o: [['dark', 'Dark'], ['black', 'Black (AMOLED)'], ['light', 'Light']] },
+    { k: 'accent', t: 'color', l: 'Accent color' },
+    ['h', 'Text'],
+    { k: 'font', t: 'sel', l: 'Font', o: [['sys', 'System'], ['round', 'Rounded'], ['serif', 'Serif'], ['mono', 'Monospace']] },
+    { k: 'fs', t: 'range', l: 'Text size', min: 12, max: 26, u: 'px' },
+    { k: 'pad', t: 'range', l: 'Row spacing', min: 1, max: 18, u: 'px' },
+    { k: 'alt', t: 'bool', l: 'Alternate row shading' },
+    { k: 'fixc', t: 'bool', l: 'Fix hard-to-read name colors', h: 'Lightens (or darkens) colors that blend into the background' },
+    ['h', 'Images'],
+    { k: 'es', t: 'range', l: 'Emote size', min: 16, max: 72, u: 'px' },
+    { k: 'bs', t: 'range', l: 'Badge size', min: 12, max: 40, u: 'px' }
+  ],
+  Chat: [
+    ['h', 'Display'],
+    { k: 'ts', t: 'bool', l: 'Show timestamps' },
+    { k: 'h12', t: 'bool', l: '12-hour clock', h: 'New messages' },
+    { k: 'badges', t: 'sel', l: 'Badges', o: [['all', 'All'], ['tw', 'Twitch only'], ['none', 'Hidden']] },
+    { k: 'emotes', t: 'bool', l: 'Show emotes', h: 'Off shows the emote name as text' },
+    { k: 'tpemotes', t: 'bool', l: 'Show 7TV / BTTV / FFZ emotes' },
+    { k: 'paints', t: 'bool', l: '7TV name paints', h: 'New messages' },
+    ['h', 'Behavior'],
+    { k: 'hist', t: 'bool', l: 'Load recent history on join', h: 'Applies the next time a channel opens' },
+    { k: 'max', t: 'range', l: 'Messages kept per channel', min: 100, max: 2000, step: 100 },
+    ['h', 'Highlights & muting'],
+    { k: 'hl', t: 'bool', l: 'Highlight when I\'m mentioned' },
+    { k: 'hlc', t: 'color', l: 'Highlight color' },
+    { k: 'mutew', t: 'text', l: 'Muted words', p: 'word, word', h: 'Comma separated' },
+    { k: 'muteu', t: 'text', l: 'Muted users', p: 'user, user', h: 'Comma separated' }
+  ],
+  Send: [
+    ['h', 'Hold to spam'],
+    { k: 'spam', t: 'bool', l: 'Hold Send to repeat', h: 'Type a message, then press and hold Send' },
+    { k: 'hold', t: 'range', l: 'Hold delay', min: 200, max: 1200, step: 50, u: 'ms' },
+    { k: 'maxspam', t: 'range', l: 'Stop after', min: 0, max: 300, step: 5, z: 'never' },
+    ['h', 'Limits'],
+    { k: 'modburst', t: 'bool', l: 'Mods: use full 100 per 30s', h: 'Regular chatters are always held to 20 per 30s, evenly spaced, and slow mode' },
+    { k: 'dupfix', t: 'bool', l: 'Bypass duplicate-message block', h: 'Adds an invisible character to repeats' }
+  ]
 };
-$('#close').onclick = () => $('#dlg').close();
-$('#logout').onclick = () => { auth = {}; store.set('auth', auth); $('#dlg').close(); reconnect(); };
-$('#login').onclick = () => {
-  const cid = CLIENT_ID || $('#cid').value.trim();
-  if (!cid) { $('#cid').focus(); return }
-  store.set('cid', cid);
-  const state = Math.random().toString(36).slice(2);
-  store.set('state', state);
-  location.href = 'https://id.twitch.tv/oauth2/authorize?' + new URLSearchParams({
-    client_id: cid, redirect_uri: location.origin + location.pathname,
-    response_type: 'token', scope: 'chat:read chat:edit moderator:read:followers', state
+let stab = 'Account';
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e };
+const grp = t => el('div', 'grp', t);
+const kv = (a, b) => { const r = el('div', 'kv'); r.append(el('span', null, a), el('span', null, b)); return r };
+const wide = (t, fn, sec) => { const b = el('button', 'wide' + (sec ? ' sec' : ''), t); b.onclick = fn; return b };
+
+function mkField(f) {
+  const row = el('label', 'row'), l = el('span', null, f.l);
+  if (f.h) l.append(el('small', null, f.h));
+  let c, out;
+  const v = cfg[f.k];
+  if (f.t == 'sel') { c = el('select'); for (const [val, lab] of f.o) c.add(new Option(lab, val)); c.value = v }
+  else {
+    c = el('input');
+    if (f.t == 'bool') { c.type = 'checkbox'; c.checked = !!v }
+    else if (f.t == 'range') { c.type = 'range'; c.min = f.min; c.max = f.max; c.step = f.step || 1; c.value = v }
+    else if (f.t == 'color') { c.type = 'color'; c.value = v }
+    else { c.type = 'text'; c.value = v; c.placeholder = f.p || ''; c.autocapitalize = 'none'; c.autocomplete = 'off' }
+  }
+  const fmt = () => cfg[f.k] == 0 && f.z ? f.z : cfg[f.k] + (f.u || '');
+  c.addEventListener(f.t == 'text' ? 'change' : 'input', () => {
+    cfg[f.k] = f.t == 'bool' ? c.checked : f.t == 'range' ? +c.value : c.value;
+    saveCfg(); applyCfg(); if (out) out.textContent = fmt();
   });
-};
+  row.append(l);
+  if (f.t == 'range') { out = el('span', 'val', fmt()); row.append(out) }
+  row.append(c);
+  return row;
+}
+
+function openSettings(t) { if (t) stab = t; renderSettings(); if (!$('#dlg').open) $('#dlg').showModal() }
+function renderSettings() {
+  const st = $('#st'); st.replaceChildren();
+  for (const n of ['Account', 'Look', 'Chat', 'Send', 'Data']) {
+    const b = el('button', n == stab ? 'on' : '', n); b.onclick = () => { stab = n; renderSettings() }; st.append(b);
+  }
+  const sb = $('#sb'); sb.replaceChildren();
+  const on = !!(auth.u && auth.t);
+  if (stab == 'Account') {
+    sb.append(grp('Twitch account'));
+    sb.append(el('div', 'note', on ? 'Logged in as ' + auth.u + '. Your settings are saved for this account on this device.' : 'Not logged in. You can read chat; log in to send messages.'));
+    if (on) sb.append(wide('Log out', () => {
+      if (spam) spam.stop = true;
+      auth = {}; store.set('auth', auth); cfg = loadCfg(); applyCfg(); reconnect(); renderSettings();
+    }, true));
+    else {
+      let cid = null;
+      if (!CLIENT_ID) { cid = el('input'); cid.placeholder = 'Twitch Client ID (one-time)'; cid.autocapitalize = 'none'; cid.autocomplete = 'off'; cid.value = store.get('cid', ''); cid.style.cssText = 'width:100%;margin-top:6px'; sb.append(cid) }
+      sb.append(wide('Login with Twitch', () => {
+        const id = CLIENT_ID || cid.value.trim();
+        if (!id) { cid.focus(); return }
+        store.set('cid', id);
+        const state = Math.random().toString(36).slice(2);
+        store.set('state', state);
+        location.href = 'https://id.twitch.tv/oauth2/authorize?' + new URLSearchParams({
+          client_id: id, redirect_uri: location.origin + location.pathname,
+          response_type: 'token', scope: 'chat:read chat:edit moderator:read:followers', state
+        });
+      }));
+    }
+    const c = chans[cur];
+    if (on && c) {
+      sb.append(grp('Current channel · #' + c.name));
+      const lim = limitFor(c);
+      sb.append(kv('Your role', c.me ? roleOf(c) : 'Chatter (detecting…)'));
+      sb.append(kv('Rate limit', lim + ' messages / 30s'));
+      sb.append(kv('Slow mode', c.slow ? c.slow + 's' + (slowExempt(c) ? ' (exempt)' : '') : 'Off'));
+    }
+  } else if (stab == 'Data') {
+    sb.append(grp('Your settings'));
+    sb.append(el('div', 'note', 'Customization is stored on this device, separately for each Twitch account (guests share one profile).'));
+    sb.append(wide('Export settings (copy)', () => {
+      const s = JSON.stringify(cfg);
+      (navigator.clipboard?.writeText(s) || Promise.reject()).then(() => alert('Settings copied.')).catch(() => prompt('Copy your settings:', s));
+    }, true));
+    sb.append(wide('Import settings (paste)', () => {
+      const s = prompt('Paste settings JSON'); if (!s) return;
+      try {
+        const o = JSON.parse(s); let n = 0;
+        for (const k in DEF) if (k in o && typeof o[k] == typeof DEF[k]) { cfg[k] = o[k]; n++ }
+        saveCfg(); applyCfg(); renderSettings(); alert(n + ' settings imported.');
+      } catch { alert('That is not valid settings JSON.') }
+    }, true));
+    sb.append(wide('Reset all settings to default', () => {
+      if (!confirm('Reset all settings?')) return;
+      cfg = { ...DEF }; saveCfg(); applyCfg(); renderSettings();
+    }, true));
+  } else {
+    for (const f of FIELDS[stab]) sb.append(Array.isArray(f) ? grp(f[1]) : mkField(f));
+  }
+}
+$('#cog').onclick = () => openSettings('Account');
+$('#close').onclick = () => $('#dlg').close();
+
 async function validate(tok) {
   try {
     const r = await fetch('https://id.twitch.tv/oauth2/validate', { headers: { Authorization: 'OAuth ' + tok } });
@@ -393,15 +666,8 @@ async function finishLogin() {
   } else if (auth.t) {
     if (await validate(auth.t) === null) { auth = {}; store.set('auth', auth) }
   }
+  cfg = loadCfg(); applyCfg(); // load this account's settings
 }
-$('#f').onsubmit = e => {
-  e.preventDefault();
-  const text = $('#in').value.trim(); if (!text || !cur) return;
-  if (!(auth.u && auth.t)) { $('#cog').click(); return }
-  ws.send(`PRIVMSG #${cur} :${text}`);
-  push(chans[cur], mkMsg({ tags: { ...(chans[cur].me || {}), 'display-name': auth.u, 'user-id': auth.id, emotes: '' }, trailing: text, nick: auth.u }, chans[cur]));
-  $('#in').value = '';
-};
 
 const loginDone = finishLogin();
 const globalsReady = loginDone.then(loadGlobals);
