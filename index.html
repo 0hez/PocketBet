@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://cdn.7tv.app" crossorigin>
+<link rel="preconnect" href="https://static-cdn.jtvnw.net" crossorigin>
+<link rel="preconnect" href="https://cdn.betterttv.net" crossorigin>
+<link rel="preconnect" href="https://7tv.io" crossorigin>
 <title>Chat</title>
 <style>
 :root{color-scheme:dark;--bg:#202020;--fg:#efeff1;--p:#9147ff;--pt:#fff;--card:#18181b;--line:#333;--rowline:#2e2e2e;--alt:#262626;--chip:#26262c;--mut:#8a8a8a;--fs:15px;--es:28px;--bs:22px;--pad:7px;--hl:#ffb300;--ff:system-ui,sans-serif}
@@ -41,7 +45,10 @@ button.sec{background:var(--chip);color:var(--fg)}
 .sr button{background:none;color:var(--fg);padding:0;min-height:0;white-space:nowrap;flex:none;font-size:1em;border-radius:6px}
 .sr button b{color:var(--p)}
 #sue{gap:12px}
-#sue button img{height:46px;max-width:140px;object-fit:contain;display:block}
+#sue button{min-width:46px;height:46px;border-radius:6px}
+#sue button.ld{background:var(--chip);animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.55}}
+#sue button img{height:46px;max-width:200px;object-fit:contain;display:block}
 #in{padding:8px 10px}
 #bar #men{padding:0 9px;min-width:0;flex:none}
 #bar #men.on{background:var(--p);color:var(--pt)}
@@ -1064,14 +1071,25 @@ async function loadMine() {
   // previews: small 1x images, reused between keystrokes so they never re-download or re-decode
   const prevCache = new Map();
   const small = u => u.replace(/\/2x\.(webp|avif|gif|png)$/, '/1x.$1').replace(/\/2\.0$/, '/1.0');
-  function prevImg(name, url) {
+  // one shared <img> per emote: loaded once, falls back to a bigger / PNG version if the small one stalls, never re-downloaded
+  function prevImg(name, url, late) {
     const k = name + url; let im = prevCache.get(k);
-    if (!im) {
-      im = new Image(); im.decoding = 'async'; im.alt = im.title = name; im.src = small(url);
-      prevCache.set(k, im);
-      if (prevCache.size > 400) prevCache.delete(prevCache.keys().next().value);
-    }
+    if (im) return im;
+    im = new Image(); im.decoding = 'async'; im.alt = im.title = name;
+    const list = [...new Set([small(url), url, url.replace(/\.(webp|avif)$/, '.png')])]; let n = 0, t = 0;
+    const arm = () => { clearTimeout(t); im.src = list[n]; t = setTimeout(() => { if (!im.naturalWidth) fail() }, 3000) };
+    const fail = () => { clearTimeout(t); if (++n < list.length) arm(); else { prevCache.delete(k); im.onDead?.() } };
+    im.onload = () => clearTimeout(t); im.onerror = fail;
+    prevCache.set(k, im);
+    if (prevCache.size > 400) prevCache.delete(prevCache.keys().next().value);
+    late ? setTimeout(arm, late) : arm(); // the first few start now, the rest a moment later so they cannot slow those down
     return im;
+  }
+  // a button for one emote preview: a fixed-size placeholder shows at once, the emote fades in when it is ready
+  function prevBtn(b, im) {
+    if (!im.naturalWidth) { b.classList.add('ld'); im.addEventListener('load', () => b.classList.remove('ld'), { once: true }) }
+    im.onDead = () => b.remove();
+    b.append(im);
   }
   let updRaf = 0;
   const updSoon = () => { if (!updRaf) updRaf = requestAnimationFrame(() => { updRaf = 0; upd() }) };
@@ -1089,9 +1107,8 @@ async function loadMine() {
       else b.textContent = (x.at ? '@' : '') + u.n;
     }
     if (!x.at) for (const [, name, url] of emotesFor(c, x.q)) {
-      const b = btn(sue, () => pick(name, x)), im = prevImg(name, url);
-      im.onerror = () => { prevCache.delete(name + url); b.remove() };
-      b.append(im);
+      const b = btn(sue, () => pick(name, x));
+      prevBtn(b, prevImg(name, url, sue.children.length > 7 ? 150 + sue.children.length * 25 : 0));
     }
     box.classList.toggle('on', sun.children.length + sue.children.length > 0);
     clearTimeout(remT);
@@ -1108,7 +1125,7 @@ async function loadMine() {
     for (const [name, url] of add) {
       const b = document.createElement('button'); b.type = 'button'; b.addEventListener('mousedown', e => e.preventDefault());
       b.onclick = () => { c.emotes[name] ||= url; pick(name, x) }; // remembered, so it also shows as an emote when your message comes back in chat
-      const im = prevImg(name, url); im.onerror = () => { prevCache.delete(name + url); b.remove() }; b.append(im); sue.append(b);
+      sue.append(b); prevBtn(b, prevImg(name, url, 150 + sue.children.length * 25));
     }
     box.classList.toggle('on', sun.children.length + sue.children.length > 0);
   }
