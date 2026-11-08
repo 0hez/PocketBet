@@ -312,7 +312,7 @@ function ago(iso) {
   let y = b.getFullYear() - a.getFullYear(), mo = b.getMonth() - a.getMonth(), d = b.getDate() - a.getDate();
   if (d < 0) { mo--; d += new Date(b.getFullYear(), b.getMonth(), 0).getDate() }
   if (mo < 0) { y--; mo += 12 }
-  return [y && y + 'y', mo && mo + 'm', (d || (!y && !mo)) && d + 'd'].filter(Boolean).join(' ');
+  return (y ? y + 'y ' : '') + mo + 'm ' + d + 'd';
 }
 async function openCard(n) {
   const login = n.dataset.login, uid = n.dataset.uid, ch = cur, sub = n.dataset.sub;
@@ -331,19 +331,22 @@ async function openCard(n) {
   const cb = document.createElement('button'); cb.textContent = 'Close'; cb.style.cssText = 'width:100%;margin-top:6px'; cb.onclick = () => card.close();
   card.append(cb); card.showModal();
 
-  const [hu, iv, sa] = await Promise.all([
+  const [hu, iv, sa, hf] = await Promise.all([
     uid ? hx('https://api.twitch.tv/helix/users?id=' + uid) : null,
     j('https://api.ivr.fi/v2/twitch/user?login=' + encodeURIComponent(login)),
-    ch && login != ch ? j(`https://api.ivr.fi/v2/twitch/subage/${encodeURIComponent(login)}/${encodeURIComponent(ch)}`) : null
+    ch && login != ch ? j(`https://api.ivr.fi/v2/twitch/subage/${encodeURIComponent(login)}/${encodeURIComponent(ch)}`) : null,
+    uid && ch && chans[ch]?.room && login != ch ? hx(`https://api.twitch.tv/helix/channels/followers?broadcaster_id=${chans[ch].room}&user_id=${uid}`) : null
   ]);
   const u = hu?.data?.[0], i0 = Array.isArray(iv) ? iv[0] : null;
   const created = u?.created_at || i0?.createdAt;
   const avatar = u?.profile_image_url || i0?.logo;
   if (avatar) av.src = avatar;
-  cr.textContent = created ? `${dateStr(created)} (${ago(created)} ago)` : 'Unavailable';
+  cr.textContent = created ? dateStr(created) : 'Unavailable';
+  const fd = hf?.data ? (hf.data[0]?.followed_at || null) : sa?.followedAt;
   if (login == ch) fol.textContent = 'Channel owner';
-  else if (sa) fol.textContent = sa.followedAt ? `${dateStr(sa.followedAt)} (${ago(sa.followedAt)})` : 'Not following';
-  else fol.textContent = 'Unavailable';
+  else if (fd) fol.textContent = `${dateStr(fd)} (${ago(fd)} ago)`;
+  else if (hf?.data) fol.textContent = 'Not following';
+  else fol.textContent = 'Unavailable (log in again as a mod of this channel)';
   const months = sub !== '' ? +sub : sa?.cumulative?.months;
   const tier = sa?.meta?.tier;
   sb.textContent = months != null
@@ -370,7 +373,7 @@ $('#login').onclick = () => {
   store.set('state', state);
   location.href = 'https://id.twitch.tv/oauth2/authorize?' + new URLSearchParams({
     client_id: cid, redirect_uri: location.origin + location.pathname,
-    response_type: 'token', scope: 'chat:read chat:edit', state
+    response_type: 'token', scope: 'chat:read chat:edit moderator:read:followers', state
   });
 };
 async function validate(tok) {
