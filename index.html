@@ -59,7 +59,7 @@ const store = {
   get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d } catch { return d } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} }
 };
-const G = { badges: {}, ffz: {}, emotes: {}, bttvBadge: {} };
+const G = { badges: {}, ffz: {}, emotes: {}, bttvBadge: {}, chatterino: {}, dank: {} };
 const chans = {};
 let cur = null, ws = null, auth = store.get('auth', {});
 
@@ -80,23 +80,44 @@ async function getBadges(kind, room, o) {
 }
 // 7TV badge per user (looked up once, cached)
 const sevenP = {};
-const sevenBadge = uid => sevenP[uid] ||= j(`https://7tv.io/v3/users/twitch/${uid}`).then(d => { const id = d?.user?.style?.badge_id; return id ? `https://cdn.7tv.app/badge/${id}/2x.webp` : null });
+const sevenUser = uid => sevenP[uid] ||= j(`https://7tv.io/v3/users/twitch/${uid}`).then(d => d?.user?.style || null);
+// 7TV paints (name gradients), fetched once per paint id
+const paintP = {};
+const sevenPaint = id => paintP[id] ||= fetch('https://7tv.io/v3/gql', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ query: 'query($l:[ObjectID!]){cosmetics(list:$l){paints{id function color angle image_url repeat stops{at color} shadows{x_offset y_offset radius color}}}}', variables: { l: [id] } })
+}).then(r => r.json()).then(d => d?.data?.cosmetics?.paints?.[0] || null).catch(() => null);
+const rgba = n => { n >>>= 0; return `rgba(${n >>> 24},${(n >> 16) & 255},${(n >> 8) & 255},${((n & 255) / 255).toFixed(2)})` };
+function paint(el, p) {
+  const st = (p.stops || []).map(x => `${rgba(x.color)} ${(x.at * 100).toFixed(1)}%`).join(',');
+  const r = p.repeat ? 'repeating-' : '';
+  const bg = p.function == 'LINEAR_GRADIENT' ? `${r}linear-gradient(${p.angle || 0}deg,${st})`
+    : p.function == 'RADIAL_GRADIENT' ? `${r}radial-gradient(circle,${st})`
+    : p.image_url ? `url(${p.image_url})` : null;
+  if (!bg || (p.function != 'URL' && !st)) return;
+  Object.assign(el.style, { backgroundImage: bg, backgroundSize: p.function == 'URL' ? 'cover' : '', backgroundClip: 'text', webkitBackgroundClip: 'text', color: 'transparent', webkitTextFillColor: 'transparent' });
+  if (p.shadows?.length) el.style.filter = p.shadows.map(x => `drop-shadow(${x.x_offset}px ${x.y_offset}px ${x.radius}px ${rgba(x.color)})`).join(' ');
+}
 const fixColor = c => {
   if (!c || c.length != 7) return null;
   const v = [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
   return (.2126 * v[0] + .7152 * v[1] + .0722 * v[2]) / 255 > .25 ? c : `rgb(${v.map(x => (x + 255) >> 1).join(',')})`;
 };
 async function loadGlobals() {
-  const [, ffz, s, b, bb] = await Promise.all([
+  const [, ffz, s, b, bb, ch, dk] = await Promise.all([
     getBadges('g', null, G.badges),
     j('https://api.frankerfacez.com/v1/badges/ids'),
     j('https://7tv.io/v3/emote-sets/global'),
     j('https://api.betterttv.net/3/cached/emotes/global'),
-    j('https://api.betterttv.net/3/cached/badges')
+    j('https://api.betterttv.net/3/cached/badges'),
+    j('https://api.chatterino.com/badges'),
+    j('https://api.flxrs.com/api/badges/dank')
   ]);
   seven(s?.emotes, G.emotes);
   bttv(b, G.emotes);
   for (const x of bb || []) if (x.badge?.svg) G.bttvBadge[x.providerId] = x.badge.svg;
+  for (const x of ch?.badges || []) for (const u of x.users || []) (G.chatterino[u] ||= []).push(x.image2 || x.image1);
+  for (const x of (Array.isArray(dk) ? dk : dk?.badges) || []) for (const u of x.users || []) (G.dank[u] ||= []).push(x.url);
   if (ffz) for (const x of ffz.badges) {
     const img = fix(x.urls['2'] || x.urls['1']);
     for (const u of ffz.users[x.id] || []) (G.ffz[u] ||= []).push(img);
@@ -167,7 +188,13 @@ function mkMsg(m, c, hist) {
   for (const b of (m.tags.badges || '').split(',')) { const u = c.badges[b] || G.badges[b]; if (u) img(u, 'b', bs) }
   for (const u of G.ffz[uid] || []) img(u, 'b', bs);
   if (G.bttvBadge[uid]) img(G.bttvBadge[uid], 'b', bs);
-  if (uid) sevenBadge(uid).then(u => u && img(u, 'b', bs));
+  for (const x of G.chatterino[uid] || []) img(x, 'b', bs);
+  for (const x of G.dank[uid] || []) img(x, 'b', bs);
+  if (uid) sevenUser(uid).then(async st => {
+    if (!st) return;
+    if (st.badge_id) img(`https://cdn.7tv.app/badge/${st.badge_id}/2x.webp`, 'b', bs);
+    if (st.paint_id) { const pt = await sevenPaint(st.paint_id); if (pt) paint(n, pt) }
+  });
 
   const name = m.tags['display-name'] || m.nick;
   const color = fixColor(m.tags.color) || hsl(name);
