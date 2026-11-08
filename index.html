@@ -150,7 +150,7 @@ const store = {
   get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d } catch { return d } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} }
 };
-const G = { badges: {}, ffz: {}, emotes: {}, bttvBadge: {}, chatterino: {}, dank: {}, tw: {} };
+const G = { mine: {}, badges: {}, ffz: {}, emotes: {}, bttvBadge: {}, chatterino: {}, dank: {}, tw: {} };
 const chans = {};
 let cur = null, ws = null, auth = store.get('auth', {});
 if (!store.get('chsMig', 0)) { const k = 'chs:' + (store.get('auth', {}).u || 'guest'); if (store.get(k, null) === null) store.set(k, store.get('chs', [])); store.set('chsMig', 1) }
@@ -589,7 +589,7 @@ function mkMsg(m, c, hist) {
     const w = buf.split(' ');
     w.forEach((word, i) => {
       const sp = i < w.length - 1 ? ' ' : '';
-      const u = c.emotes[word] || G.emotes[word] || (m.echo && (c.tw[word] || G.tw[word]));
+      const u = c.emotes[word] || G.emotes[word] || (m.echo && (c.tw[word] || G.tw[word] || G.mine[word]));
       const mm = !u && /^@(\w{1,25})(\W*)$/.exec(word);
       if (u) { emote(u, word, true); root.append(sp) }
       else if (mm) { shown = true; root.append(mkMention(mm[1]), mm[2] + sp) }
@@ -617,7 +617,7 @@ function mkMsg(m, c, hist) {
 // c.pin = "the user is reading the newest messages". Only the user's own scrolling changes it, never the
 // keyboard or layout changing, so the chat keeps following live while typing.
 const updJump = () => $('#jump').classList.toggle('on', !!chans[cur] && !chans[cur].pin);
-function toBottom(c) { c.prog = performance.now(); c.el.scrollTop = c.el.scrollHeight; c.last = c.el.scrollTop }
+function toBottom(c) { c.prog = performance.now(); c.el.scrollTop = c.el.scrollHeight; c.last = c.el.scrollTop; c.sh = c.el.scrollHeight }
 function push(c, el) {
   // While paused (scrolled up) the view stays frozen: new messages pile up below. Only once the log
   // is full does the oldest message get dropped, so the view drifts up one message at a time.
@@ -808,9 +808,10 @@ function mkLog(name) {
   c.last = 0;
   el.addEventListener('scroll', () => {
     const top = el.scrollTop, dist = el.scrollHeight - top - el.clientHeight;
-    if (dist < 40) c.pin = true; // back at the bottom: follow live again
-    else if (top < c.last - 1) c.pin = false; // moved up
-    c.last = top;
+    const shrunk = el.scrollHeight < (c.sh || 0); // old rows were trimmed: the position moved by itself, not the user
+    if (!shrunk && top < c.last - 1) c.pin = false; // any upward move pauses, even a tiny one
+    else if (dist < (top > c.last ? 40 : 6)) c.pin = true; // only scrolling down to the bottom (or sitting right at it) resumes
+    c.last = top; c.sh = el.scrollHeight;
     if (cur == c.name) updJump();
   }, { passive: true });
   // whenever the box changes size (keyboard, suggestions bar, rotation) and the user is at the bottom, stay at the bottom
@@ -1020,6 +1021,20 @@ $('#f').onsubmit = e => {
   area.addEventListener('click', e => { if (Date.now() - dragged < 350) { e.stopPropagation(); e.preventDefault() } }, true);
 }
 
+// 7TV emotes that are not in the channel's / global set (your own set, other sets): looked up by name on 7TV
+const svSearch = {};
+const searchEmotes = q => svSearch[q] ||= fetch('https://7tv.io/v3/gql', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ query: 'query($q:String!){emotes(query:$q,limit:24,filter:{case_sensitive:false,exact_match:false}){items{id name host{url}}}}', variables: { q } }), signal: to(6000) })
+  .then(r => r.json()).then(d => (d?.data?.emotes?.items || []).filter(e => e.name && e.host?.url).map(e => [e.name, fix(e.host.url) + '/2x.webp']))
+  .catch(() => { delete svSearch[q]; return [] });
+// the logged-in user's own 7TV emote set, so it is available in every channel
+async function loadMine() {
+  if (!auth.id) return;
+  const k = 'sv:m:' + auth.id, cc = store.get(k, null); if (cc) for (const n in cc.e) G.mine[n] = cc.e[n];
+  const s = await j(`https://7tv.io/v3/users/twitch/${auth.id}`), l = s?.emote_set?.emotes; if (!l) return;
+  const o = {}; seven(l, o); G.mine = o; store.set(k, { e: o });
+}
+
 // ---------- autocomplete: @names, plus 7TV / BTTV / FFZ / Twitch emote previews as you type ----------
 {
   const inp = $('#in'), box = $('#sug'), sun = $('#sun'), sue = $('#sue');
@@ -1038,7 +1053,7 @@ $('#f').onsubmit = e => {
   function emotesFor(c, q) {
     const seen = new Set(), out = [];
     // this channel's emotes first, then every Twitch emote you can use (subs etc.), then global 7TV/BTTV
-    [c.emotes, c.tw, G.tw, G.emotes].forEach((src, si) => { for (const k in src) {
+    [c.emotes, c.tw, G.tw, G.emotes, G.mine].forEach((src, si) => { for (const k in src) {
       if (seen.has(k)) continue;
       const r = rank(k, q); if (r < 0) continue;
       seen.add(k); out.push([r, si, k, src[k]]);
@@ -1077,6 +1092,23 @@ $('#f').onsubmit = e => {
       const b = btn(sue, () => pick(name, x)), im = prevImg(name, url);
       im.onerror = () => { prevCache.delete(name + url); b.remove() };
       b.append(im);
+    }
+    box.classList.toggle('on', sun.children.length + sue.children.length > 0);
+    clearTimeout(remT);
+    if (!x.at && x.q.length >= 2) remT = setTimeout(() => remote(c, x.q), 220);
+  }
+  // also ask 7TV by name, so emotes that are not in this channel's set still show up
+  let remT = 0;
+  async function remote(c, q) {
+    const list = await searchEmotes(q), x = ctx();
+    if (!x || x.at || x.q != q || chans[cur] != c) return;
+    const have = new Set([...sue.querySelectorAll('img')].map(i => i.alt));
+    const add = list.filter(([n]) => !have.has(n) && !c.emotes[n] && !G.emotes[n] && !G.mine[n] && !c.tw[n] && !G.tw[n])
+      .sort((a, b) => (rank(a[0], q) - rank(b[0], q)) || a[0].length - b[0].length).filter(e => rank(e[0], q) >= 0).slice(0, 12);
+    for (const [name, url] of add) {
+      const b = document.createElement('button'); b.type = 'button'; b.addEventListener('mousedown', e => e.preventDefault());
+      b.onclick = () => { c.emotes[name] ||= url; pick(name, x) }; // remembered, so it also shows as an emote when your message comes back in chat
+      const im = prevImg(name, url); im.onerror = () => { prevCache.delete(name + url); b.remove() }; b.append(im); sue.append(b);
     }
     box.classList.toggle('on', sun.children.length + sue.children.length > 0);
   }
@@ -1488,6 +1520,7 @@ async function finishLogin() {
 const loginDone = finishLogin();
 const globalsReady = loginDone.then(loadGlobals);
 loginDone.then(loadTwEmotes);
+loginDone.then(loadMine);
 loginDone.then(() => { if (auth.id) prefetch7(auth.id) }); // your own 7TV badge/paint is ready before you send your first message
 loginDone.then(() => { loadSession(); connect() });
 globalsReady.then(() => { for (const k in chans) if (k[0] != '@') reBadge(chans[k]) }); // badges from the global lists reach messages that came in before the lists were ready
