@@ -71,6 +71,10 @@ button.sec{background:var(--chip);color:var(--fg)}
 dialog{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:12px;width:min(94vw,440px);padding:0}
 dialog::backdrop{background:#0009}
 #card{padding:16px}
+#card[open]{display:flex;flex-direction:column;max-height:86dvh}
+#card>*{flex:none}
+#card>.uh{flex:1 1 auto;min-height:130px;overflow-y:auto;overscroll-behavior:contain;padding:0 10px;margin:4px 0;border:1px solid var(--rowline);border-radius:8px}
+#card>.uh:empty::after{content:'No messages seen yet';display:block;padding:12px 0;color:var(--mut);text-align:center}
 #dlg[open]{display:flex;flex-direction:column;max-height:86dvh}
 #dh{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;flex:none}
 #dh button{min-height:34px}
@@ -310,7 +314,7 @@ function mkMsg(m, c, hist) {
   if (text.startsWith('\x01ACTION ')) { action = true; text = text.slice(8).replace(/\x01/g, '') }
   text = text.replace(/[\u{E0000}-\u{E007F}\u200B-\u200F\u2060-\u2064\u034F\uFEFF\u180E\uFFFC]/gu, '').trimEnd(); // invisible characters used to bypass the duplicate block
   const d = document.createElement('div');
-  d.className = 'm' + (hist ? ' h' : '');
+  d.className = 'm' + (hist ? ' h' : ''); if (m.tags.id) d.dataset.id = m.tags.id;
   const img = (url, cls, parent, title, bg) => { const i = new Image(); i.src = url; i.className = cls; i.title = i.alt = title || ''; if (bg) { i.style.backgroundColor = bg; i.style.borderRadius = '4px' } i.onerror = () => i.remove(); i.onload = () => { if (c.pin) toBottom(c) }; parent.append(i) };
   if (cfg.hl && auth.u && (m.nick || '').toLowerCase() != auth.u.toLowerCase() &&
       new RegExp('(^|\\W)@?' + auth.u.replace(/\W/g, '') + '(?!\\w)', 'i').test(text)) d.classList.add('hl');
@@ -836,7 +840,18 @@ async function openCard(n) {
   else bv.textContent = 'None';
   const fol = row('Following since'), sb = row('Subscription'), cr = row('Account created');
   const cb = document.createElement('button'); cb.textContent = 'Close'; cb.style.cssText = 'width:100%;margin-top:6px'; cb.onclick = () => card.close();
+  // this user's earlier messages in this channel (copied from the chat), newest at the bottom; scroll up for older
+  const hist = [...(chans[ch]?.el?.children || [])].filter(r => (r.querySelector(':scope>.nm')?.dataset.login || '').toLowerCase() == login.toLowerCase());
+  const hl = el('div', null, `Messages (${hist.length})`); hl.style.cssText = 'color:var(--mut);font-size:13px;margin-top:10px';
+  const hb = el('div', 'uh'); let hpin = true;
+  for (const r of hist) { const k = r.cloneNode(true); k.classList.remove('hl'); hb.append(k) }
+  hb.addEventListener('scroll', () => { hpin = hb.scrollHeight - hb.scrollTop - hb.clientHeight < 40 }, { passive: true });
+  for (const i of hb.querySelectorAll('img')) i.addEventListener('load', () => { if (hpin) hb.scrollTop = hb.scrollHeight });
+  card.append(hl, hb);
+  const mc = chans[ch];
+  if (mc?.room && uid && uid != auth.id && login != mc.name && isMod(mc)) modTools(card, mc, login, uid, n.closest('.m')?.dataset.id);
   card.append(cb); card.showModal();
+  hb.scrollTop = hb.scrollHeight;
   fol.textContent = 'N/A'; // followage disabled for now
 
   const [hu, iv, sa] = await Promise.all([
@@ -854,6 +869,54 @@ async function openCard(n) {
   sb.textContent = months != null
     ? (months < 1 ? 'Subscribed (under 1 month)' : `${months} month${months == 1 ? '' : 's'}`) + (tier ? ' · Tier ' + tier : '')
     : sa?.statusHidden ? 'Hidden' : sa ? 'Not subscribed' : 'Unavailable';
+}
+
+// ---------- mod tools (only shown on the user card when you are a mod/broadcaster in that channel) ----------
+async function modCall(method, path, body) {
+  if (!auth.t) return { ok: false, msg: 'Not logged in' };
+  try {
+    const r = await fetch('https://api.twitch.tv/helix/moderation/' + path, {
+      method, body: body ? JSON.stringify({ data: body }) : undefined,
+      headers: { 'Client-Id': CLIENT_ID, Authorization: 'Bearer ' + auth.t, ...(body ? { 'Content-Type': 'application/json' } : {}) }
+    });
+    if (r.ok) return { ok: true };
+    let msg = ''; try { msg = (await r.json()).message || '' } catch {}
+    if (r.status == 401 || (r.status == 403 && /scope/i.test(msg))) msg = 'Needs a new login to allow mod actions: Settings > Account > Add account.';
+    return { ok: false, msg: msg || 'Twitch error ' + r.status };
+  } catch { return { ok: false, msg: 'Network error' } }
+}
+function modTools(card, c, login, uid, msgId) {
+  const wrap = el('div'); wrap.style.cssText = 'margin:14px 0 8px;padding-top:10px;border-top:1px solid var(--line)';
+  const title = el('div', null, 'Mod actions'); title.style.cssText = 'color:var(--mut);font-size:13px;margin-bottom:8px';
+  const grid = el('div'); grid.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px';
+  const st = el('div'); st.style.cssText = 'margin-top:8px;font-size:13px;min-height:1.3em';
+  const q = `?broadcaster_id=${c.room}&moderator_id=${auth.id}`;
+  const act = (label, color, fn) => {
+    const b = el('button', 'sec', label); b.style.minHeight = '38px';
+    if (color) { b.style.background = color; b.style.color = '#fff' }
+    b.onclick = async () => {
+      const done = await fn(); if (!done) return;         // fn returns [doneText, promise] or null if cancelled
+      st.style.color = 'var(--mut)'; st.textContent = '…';
+      const r = await done[1];
+      st.style.color = r.ok ? '#3fb950' : '#f85149'; st.textContent = r.ok ? done[0] : r.msg;
+      if (r.ok) sys(c, `${auth.u}: ${done[0]}`);
+    };
+    grid.append(b);
+  };
+  for (const [l, secs] of [['1m', 60], ['10m', 600], ['1h', 3600], ['1d', 86400]])
+    act('Timeout ' + l, null, async () => [`timed out ${login} (${l})`, modCall('POST', 'bans' + q, { user_id: uid, duration: secs })]);
+  act('Ban', '#c0392b', async () => {
+    if (!confirm('Ban ' + login + '?')) return null;
+    const reason = prompt('Reason (optional)') ?? null; if (reason === null) return null;
+    return [`banned ${login}`, modCall('POST', 'bans' + q, { user_id: uid, reason: reason.slice(0, 500) })];
+  });
+  act('Unban / untimeout', null, async () => [`unbanned ${login}`, modCall('DELETE', 'bans' + q + '&user_id=' + uid)]);
+  act('Warn', null, async () => {
+    const reason = prompt('Warning reason (required)'); if (!reason || !reason.trim()) return null;
+    return [`warned ${login}`, modCall('POST', 'warnings' + q, { user_id: uid, reason: reason.trim().slice(0, 500) })];
+  });
+  if (msgId) act('Delete message', null, async () => [`deleted a message from ${login}`, modCall('DELETE', 'chat' + q + '&message_id=' + msgId)]);
+  wrap.append(title, grid, st); card.append(wrap);
 }
 
 // ---------- settings panel ----------
@@ -964,7 +1027,7 @@ function startLogin(id) {
   store.set('state', state);
   const url = 'https://id.twitch.tv/oauth2/authorize?' + new URLSearchParams({
     client_id: id, redirect_uri: location.origin + location.pathname,
-    response_type: 'token', scope: 'chat:read chat:edit moderator:read:followers user:read:emotes', state, force_verify: 'true'
+    response_type: 'token', scope: 'chat:read chat:edit moderator:read:followers user:read:emotes moderator:manage:banned_users moderator:manage:chat_messages moderator:manage:warnings', state, force_verify: 'true'
   });
   // open in a browser tab: going through twitch.tv links gets grabbed by the Twitch app on phones
   const w = accts.length ? window.open(url, '_blank') : null;
