@@ -21,7 +21,11 @@ body.kb input{padding:7px 10px}
 body.kb button{min-height:34px}
 body.kb .m{padding-top:calc(var(--pad)*.35);padding-bottom:calc(var(--pad)*.35)}
 body.kb .m.sys{font-size:.85em}
-#bar{display:flex;flex:none;align-items:center;gap:6px;padding:0 8px calc(8px + env(safe-area-inset-bottom))}
+#bar{display:flex;flex:none;align-items:center;gap:6px;padding:0 8px 3px}
+#brand{flex:none;text-align:center;font:italic 800 10px/1 var(--ff);letter-spacing:.24em;padding:2px 0 calc(5px + env(safe-area-inset-bottom));user-select:none;-webkit-user-select:none;pointer-events:none}
+#brand span{background:linear-gradient(90deg,var(--p),#ff5fd2 55%,#ffb300);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent}
+#brand i{font-style:normal;color:var(--p);opacity:.75;margin:0 7px;font-size:8px;vertical-align:1px}
+body.kb #brand{display:none}
 input,select{flex:1;min-width:0;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:16px;font-family:inherit}
 button{background:var(--p);color:var(--pt);border:0;border-radius:8px;padding:0 14px;font-size:15px;min-height:40px;font-family:inherit}
 button.sec{background:var(--chip);color:var(--fg)}
@@ -118,6 +122,7 @@ dialog::backdrop{background:#0009}
   <button id="men" class="sec" aria-label="Mentions">@</button>
   <button id="cog" aria-label="Settings">⚙</button>
 </nav>
+<div id="brand"><i>✦</i><span>mychats</span><i>✦</i></div>
 <div id="notis"></div>
 <dialog id="card"></dialog>
 <dialog id="dlg">
@@ -333,6 +338,11 @@ function onIrc(m) {
     if (!c.room && m.tags['room-id']) load(c, m.tags['room-id']);
   }
   else if (m.cmd == 'USERSTATE') c.me = m.tags;
+  else if (m.cmd == 'NOTICE' && m.tags['msg-id'] == 'msg_duplicate' && cfg.dupfix && c.lastText != null && (c.dupRetry || 0) < 3 && ws && ws.readyState == 1) {
+    // Twitch still saw it as a duplicate: quietly resend it with a different invisible ending
+    c.dupRetry = (c.dupRetry || 0) + 1; c.dupN = ((c.dupN || 0) % 12) + 1; c.lastWire = dupWire(c.lastText, c.dupN);
+    ws.send(`PRIVMSG #${c.name} :${c.lastWire}`);
+  }
   else if (m.cmd == 'NOTICE' && m.tags['msg-id']) {
     sys(c, m.trailing || m.tags['msg-id']);
     if (spam && /^msg_/.test(m.tags['msg-id'])) spam.stop = true; // Twitch refused a message: stop immediately
@@ -553,15 +563,20 @@ async function load(c, room) {
 const sKey = () => (auth.u || 'guest');
 const real = () => Object.keys(chans).filter(k => k[0] != '@');
 const order = () => ['@mentions', ...real()];
-const saveChs = () => { store.set('chs:' + sKey(), real()); store.set('cur:' + sKey(), cur) };
+// the open chat tabs are shared by every account (only mentions, settings and sub emotes are per account)
+const saveChs = () => { store.set('chs:all', real()); store.set('cur:all', cur) };
+function legacyChats() { // first run of this version: merge the tab lists older versions saved per account
+  try { return [...new Set(Object.keys(localStorage).filter(k => k.startsWith('chs:') && k != 'chs:all').flatMap(k => store.get(k, [])))] } catch { return [] }
+}
 function teardown() {
   for (const k of real()) { chans[k].ro?.disconnect(); chans[k].el.remove(); delete chans[k] }
   cur = null; mUnread = 0; tabs();
 }
 function loadSession() {
-  const list = store.get('chs:' + sKey(), []), want = store.get('cur:' + sKey(), null);
+  const list = store.get('chs:all', null) ?? legacyChats(), want = store.get('cur:all', null) ?? store.get('cur:' + sKey(), null);
   restoreMentions();
-  for (const n of list) open(n);
+  for (const n of list) openChan(n);
+  saveChs(); // drops any bad entries (like a login link) that an older version saved as a chat
   if (want && chans[want]) show(want); else tabs();
 }
 
@@ -617,8 +632,8 @@ function mkLog(name) {
   c.ro.observe(el);
   return c;
 }
-function open(name) {
-  name = name.trim().toLowerCase().replace('#', ''); if (!name || name[0] == '@') return;
+function openChan(name) {
+  name = String(name).trim().toLowerCase().replace('#', ''); if (!/^[a-z0-9_]{1,25}$/.test(name)) return; // real Twitch names only
   if (!chans[name]) {
     chans[name] = mkLog(name);
     saveChs();
@@ -648,10 +663,17 @@ function waitFor(c, pacing) {
   return Math.max(0, Math.ceil(w));
 }
 
+const dupWire = (text, n) => text + ' ' + '\u{E0000}'.repeat(n);
 function sendMsg(c, text) {
   if (!ws || ws.readyState != 1) return false;
   let wire = text;
-  if (cfg.dupfix && wire === c.lastWire) wire = text + ' \u{E0000}'; // Twitch blocks identical consecutive messages
+  c.dupRetry = 0;
+  if (cfg.dupfix) {
+    // Twitch blocks a message identical to your previous one. Same text again => add a different number of
+    // invisible characters each time, so every send differs from the one before it (even if some were rejected).
+    if (text === c.lastText) { c.dupN = ((c.dupN || 0) % 12) + 1; wire = dupWire(text, c.dupN) } else c.dupN = 0;
+  }
+  c.lastText = text;
   ws.send(`PRIVMSG #${c.name} :${wire}`);
   const now = Date.now();
   sentLog.push(now); c.lastSent = now; c.lastWire = wire;
@@ -867,7 +889,7 @@ $('#f').onsubmit = e => {
 
 // ---------- UI ----------
 $('#men').onclick = () => { ensureMentions(); if (cur != '@mentions') show('@mentions') };
-$('#add').onclick = () => { const n = prompt('Channel name'); if (n) open(n) };
+$('#add').onclick = () => { const n = prompt('Channel name'); if (n) openChan(n) };
 
 // ---------- user card (tap a name) ----------
 $('#chat').addEventListener('click', e => { const n = e.target.closest('.nm'); if (n) openCard(n) });
@@ -1061,12 +1083,15 @@ const saveAccts = () => store.set('accts', accts);
 function upsertAcct(a) { accts = accts.filter(x => x.u != a.u); accts.push({ u: a.u, t: a.t, id: a.id }); saveAccts() }
 function setAuth(a) {
   if (spam) spam.stop = true;
-  saveChs(); saveMentions(); // park the outgoing account's chats and mentions under its own name
+  saveMentions(); // the outgoing account keeps its own mentions
   auth = a ? { u: a.u, t: a.t, id: a.id } : {};
   store.set('auth', auth);
   cfg = loadCfg(); applyCfg();
   sentLog.length = 0;
-  teardown(); reconnect(); loadTwEmotes(); loadSession(); // the new account gets its own session
+  for (const k of real()) Object.assign(chans[k], { me: null, lastSent: 0, lastText: null, dupN: 0 }); // per-account chat state
+  restoreMentions(); // the new account's mentions
+  reconnect(); loadTwEmotes(); // same chat tabs, now chatting as the new account
+  tabs(); saveChs();
   if ($('#dlg').open) renderSettings();
 }
 async function switchTo(a) {
