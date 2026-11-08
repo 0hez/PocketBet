@@ -11,12 +11,13 @@
 :root[data-theme=light]{color-scheme:light;--bg:#fff;--fg:#0e0e10;--card:#f4f4f5;--line:#d4d4d8;--rowline:#e4e4e7;--alt:#f6f6f8;--chip:#e9e9ee;--mut:#6b6b75}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;overflow:hidden}
-body{position:fixed;top:0;left:0;right:0;transition:height .18s ease-out;display:flex;flex-direction:column;height:100dvh;background:var(--bg);color:var(--fg);font:var(--fs)/1.5 var(--ff);padding-top:env(safe-area-inset-top)}
+body{position:fixed;top:0;left:0;right:0;display:flex;will-change:height,transform;flex-direction:column;height:100dvh;background:var(--bg);color:var(--fg);font:var(--fs)/1.5 var(--ff);padding-top:env(safe-area-inset-top)}
 header,form{display:flex;gap:6px;padding:8px}
 form{padding-bottom:4px}
-body.kb #bar{display:none}
+body.kbt{transition:height .27s cubic-bezier(.25,.8,.3,1)}
+body.kb #bar{height:0;padding-bottom:0;opacity:0;pointer-events:none}
 body.kb form{padding-bottom:6px}
-#bar{display:flex;align-items:center;gap:6px;padding:0 8px calc(8px + env(safe-area-inset-bottom))}
+#bar{display:flex;flex:none;align-items:center;gap:6px;padding:0 8px calc(8px + env(safe-area-inset-bottom));overflow:hidden;height:var(--barh,auto);transition:height .27s cubic-bezier(.25,.8,.3,1),padding .27s cubic-bezier(.25,.8,.3,1),opacity .2s}
 input,select{flex:1;min-width:0;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:16px;font-family:inherit}
 button{background:var(--p);color:var(--pt);border:0;border-radius:8px;padding:0 14px;font-size:15px;min-height:40px;font-family:inherit}
 button.sec{background:var(--chip);color:var(--fg)}
@@ -30,13 +31,16 @@ button.sec{background:var(--chip);color:var(--fg)}
 #sue button img{height:46px;max-width:140px;object-fit:contain;display:block}
 #send{touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;min-width:64px}
 #send.hot{background:#e91916;color:#fff}
-#tabs{display:flex;overflow-x:auto;gap:4px;flex:1;min-width:0}
+#tabs{display:flex;position:relative;overflow-x:auto;gap:4px;flex:1;min-width:0;scrollbar-width:none}
 #tabs button{background:var(--chip);color:var(--fg);white-space:nowrap;min-height:34px;padding:0 12px}
 #tabs .on{background:var(--p);color:var(--pt)}
 #tabs .new{outline:2px solid var(--p)}
-#chat{flex:1;min-height:0;display:flex;flex-direction:column}
-.log{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 10px;display:none;overscroll-behavior:contain}
-.log.on{display:flex;flex-direction:column}
+#chat{position:relative;flex:1;min-height:0;overflow:hidden;touch-action:pan-y}
+#empty{position:absolute;inset:0;display:none;place-items:center;text-align:center;color:var(--mut)}
+#chat.empty #empty{display:grid}
+.log{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;padding:0 10px;display:flex;flex-direction:column;visibility:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;will-change:transform}
+.log.on,.log.peek{visibility:visible}
+.log.anim{transition:transform .3s cubic-bezier(.22,.8,.3,1)}
 .log>.m:first-child{margin-top:auto}
 .m{flex:none;padding:var(--pad) 10px;margin:0 -10px;border-bottom:1px solid var(--rowline);word-break:break-word}
 .m:nth-child(even){background:var(--alt)}
@@ -83,7 +87,7 @@ dialog::backdrop{background:#0009}
 </style>
 </head>
 <body>
-<div id="chat"></div>
+<div id="chat"><div id="empty">No channels open<br>Tap + to add one</div></div>
 <div id="sug"><div class="sr" id="sun"></div><div class="sr" id="sue"></div></div>
 <form id="f">
   <input id="in" placeholder="Send a message" autocomplete="off" enterkeyhint="send">
@@ -110,6 +114,7 @@ const store = {
 const G = { badges: {}, ffz: {}, emotes: {}, bttvBadge: {}, chatterino: {}, dank: {}, tw: {} };
 const chans = {};
 let cur = null, ws = null, auth = store.get('auth', {});
+if (!store.get('chsMig', 0)) { const k = 'chs:' + (store.get('auth', {}).u || 'guest'); if (store.get(k, null) === null) store.set(k, store.get('chs', [])); store.set('chsMig', 1) }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---------- settings (saved per Twitch account, guests share "guest") ----------
@@ -264,7 +269,7 @@ function muted(m) {
 
 function onIrc(m) {
   if (m.cmd == 'NOTICE' && /authentication failed|improperly formatted auth/i.test(m.trailing || '')) {
-    accts = accts.filter(x => x.u != auth.u); saveAccts(); auth = {}; store.set('auth', auth); cfg = loadCfg(); applyCfg(); reconnect();
+    accts = accts.filter(x => x.u != auth.u); saveAccts(); setAuth(null);
     alert('Twitch login expired. Tap ⚙ to log in again.'); return;
   }
   const c = chans[(m.params[0] || '').replace('#', '')];
@@ -287,7 +292,7 @@ function mkMsg(m, c, hist) {
   if (text.startsWith('\x01ACTION ')) { action = true; text = text.slice(8).replace(/\x01/g, '') }
   const d = document.createElement('div');
   d.className = 'm' + (hist ? ' h' : '');
-  const img = (url, cls, parent, title, bg) => { const i = new Image(); i.src = url; i.className = cls; i.loading = 'lazy'; i.title = i.alt = title || ''; if (bg) { i.style.backgroundColor = bg; i.style.borderRadius = '4px' } i.onerror = () => i.remove(); parent.append(i) };
+  const img = (url, cls, parent, title, bg) => { const i = new Image(); i.src = url; i.className = cls; i.loading = 'lazy'; i.title = i.alt = title || ''; if (bg) { i.style.backgroundColor = bg; i.style.borderRadius = '4px' } i.onerror = () => i.remove(); i.onload = () => { if (c.pin) toBottom(c) }; parent.append(i) };
   if (cfg.hl && auth.u && (m.nick || '').toLowerCase() != auth.u.toLowerCase() &&
       new RegExp('(^|\\W)@?' + auth.u.replace(/\W/g, '') + '(?!\\w)', 'i').test(text)) d.classList.add('hl');
 
@@ -323,6 +328,7 @@ function mkMsg(m, c, hist) {
   const emote = (url, word, tp) => {
     const s = document.createElement('span'); s.className = 'em' + (tp ? ' tp' : ''); s.dataset.t = word;
     const i = new Image(); i.src = url; i.className = 'e'; i.alt = word; i.loading = 'lazy';
+    i.onload = () => { if (c.pin) toBottom(c) };
     i.onerror = () => { s.classList.add('x'); s.textContent = word };
     s.append(i); root.append(s);
   };
@@ -354,12 +360,14 @@ function mkMsg(m, c, hist) {
   return d;
 }
 
+// c.pin = "the user is reading the newest messages". Only the user's own scrolling changes it, never the
+// keyboard or layout changing, so the chat keeps following live while typing.
+function toBottom(c) { c.prog = performance.now(); c.el.scrollTop = c.el.scrollHeight }
 function push(c, el) {
-  const atBottom = c.el.scrollHeight - c.el.scrollTop - c.el.clientHeight < 80;
   c.el.append(el);
   while (c.el.children.length > cfg.max) c.el.firstChild.remove();
-  if (atBottom) c.el.scrollTop = c.el.scrollHeight;
-  if (cur != c.name) { c.unread = true; tabs() }
+  if (c.pin) toBottom(c);
+  if (cur != c.name && !c.unread) { c.unread = true; tabs() }
 }
 function sys(c, text) {
   const d = document.createElement('div'); d.className = 'm sys'; d.textContent = text; push(c, d);
@@ -433,40 +441,67 @@ async function load(c, room) {
   const frag = document.createDocumentFragment();
   for (const l of h?.messages || []) { const m = parse(l); if (m && m.cmd == 'PRIVMSG' && !muted(m)) frag.append(mkMsg(m, c, true)) }
   c.el.prepend(frag);
-  if (cur == c.name) c.el.scrollTop = c.el.scrollHeight;
+  if (c.pin) toBottom(c);
+}
+
+// ---------- sessions: every account keeps its own open chats ----------
+const sKey = () => (auth.u || 'guest');
+const saveChs = () => { store.set('chs:' + sKey(), Object.keys(chans)); store.set('cur:' + sKey(), cur) };
+function teardown() {
+  for (const k in chans) { chans[k].ro?.disconnect(); chans[k].el.remove(); delete chans[k] }
+  cur = null; tabs();
+}
+function loadSession() {
+  const list = store.get('chs:' + sKey(), []), want = store.get('cur:' + sKey(), null);
+  for (const n of list) open(n);
+  if (want && chans[want]) show(want); else tabs();
 }
 
 // ---------- tabs ----------
-function tabs() {
-  const t = $('#tabs'); t.innerHTML = '';
+function tabs(center) {
+  const t = $('#tabs'), keep = t.scrollLeft; t.innerHTML = '';
+  let act = null;
   for (const n in chans) {
     const b = document.createElement('button');
     b.textContent = n + (n == cur ? ' ✕' : '');
     b.className = (n == cur ? 'on ' : '') + (chans[n].unread ? 'new' : '');
     b.onclick = () => n == cur ? close(n) : show(n);
+    if (n == cur) act = b;
     t.append(b);
   }
+  t.scrollLeft = keep;
+  $('#chat').classList.toggle('empty', !cur);
+  if (center && act) t.scrollTo({ left: act.offsetLeft - (t.clientWidth - act.offsetWidth) / 2, behavior: 'smooth' });
 }
 function show(n) {
-  cur = n; chans[n].unread = false; $('#sug').classList.remove('on');
+  const c = chans[n]; if (!c) return;
+  cur = n; c.unread = false; $('#sug').classList.remove('on');
   for (const k in chans) chans[k].el.classList.toggle('on', k == n);
   $('#in').placeholder = 'Message #' + n + (auth.u ? ' as ' + auth.u : '');
-  tabs(); chans[n].el.scrollTop = chans[n].el.scrollHeight;
+  saveChs(); tabs(true);
+  if (c.pin) toBottom(c);
 }
 function close(n) {
   if (ws && ws.readyState == 1) ws.send('PART #' + n);
-  chans[n].el.remove(); delete chans[n];
-  store.set('chs', Object.keys(chans));
+  const names = Object.keys(chans), i = names.indexOf(n);
+  chans[n].ro?.disconnect(); chans[n].el.remove(); delete chans[n];
   const rest = Object.keys(chans);
-  if (rest.length) show(rest[0]); else { cur = null; tabs() }
+  if (rest.length) show(rest[Math.min(i, rest.length - 1)]); else { cur = null; saveChs(); tabs() }
 }
 function open(name) {
   name = name.trim().toLowerCase().replace('#', ''); if (!name) return;
   if (!chans[name]) {
     const el = document.createElement('div'); el.className = 'log';
     $('#chat').append(el);
-    chans[name] = { name, el, badges: {}, emotes: {}, tw: {}, room: null, slow: 0, users: {} };
-    store.set('chs', Object.keys(chans));
+    const c = chans[name] = { name, el, badges: {}, emotes: {}, tw: {}, room: null, slow: 0, users: {}, pin: true, prog: 0 };
+    el.addEventListener('scroll', () => {
+      if (performance.now() - c.prog < 150) return; // our own scroll-to-bottom
+      c.pin = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    }, { passive: true });
+    // whenever the box changes size (keyboard, suggestions bar, rotation) and the user is at the bottom, stay at the bottom
+    c.ro = new ResizeObserver(() => { if (c.pin) toBottom(c) });
+    c.ro.observe(el);
+    saveChs();
     if (ws && ws.readyState == 1) ws.send('JOIN #' + name);
   }
   show(name);
@@ -549,30 +584,106 @@ $('#f').onsubmit = e => {
   if (sendMsg(c, text)) $('#in').value = '';
 };
 
-// ---------- keyboard: keep the input bar flush above the on-screen keyboard (like Chatsen) ----------
+// ---------- keyboard: input bar rides on top of the keyboard, animated in step with it ----------
 {
-  const vv = window.visualViewport, body = document.body, inp = $('#in');
-  let raf = 0, stick = false;
-  // keep the newest message pinned to the bottom while the height animates (no jump)
-  const follow = () => {
-    cancelAnimationFrame(raf);
-    const end = performance.now() + 400;
-    const step = () => { const c = chans[cur]; if (stick && c) c.el.scrollTop = c.el.scrollHeight; if (performance.now() < end) raf = requestAnimationFrame(step) };
-    step();
+  const vv = window.visualViewport, body = document.body, inp = $('#in'), bar = $('#bar'), root = document.documentElement;
+  let focused = false, kbH = store.get('kbh', 300), until = 0, tm = 0, raf = 0;
+  const anim = () => { body.classList.add('kbt'); clearTimeout(tm); tm = setTimeout(() => body.classList.remove('kbt'), 450) };
+  const measure = () => { // the tab bar's real height, so it can collapse smoothly when the keyboard opens
+    if (body.classList.contains('kb')) return;
+    root.style.setProperty('--barh', 'auto'); const h = bar.offsetHeight; root.style.setProperty('--barh', h + 'px');
   };
-  const fit = () => {
-    const c = chans[cur];
-    stick = !!c && c.el.scrollHeight - c.el.scrollTop - c.el.clientHeight < 80;
-    if (vv) {
-      body.style.height = vv.height + 'px';
-      body.style.transform = vv.offsetTop ? `translateY(${vv.offsetTop}px)` : ''; // follow Safari's own pan instead of fighting it
-    }
+  const apply = () => {
+    raf = 0;
+    const now = performance.now();
+    let h = vv ? vv.height : innerHeight;
+    // right after focus/blur the viewport hasn't reported the keyboard yet: trust our own target
+    if (focused && innerHeight - h < 120 && now < until) h = innerHeight - kbH;
+    else if (!focused && now < until && h < innerHeight - 1) h = innerHeight;
+    h = Math.round(h);
+    if (!(Math.abs(parseFloat(body.style.height) - h) < 1)) { anim(); body.style.height = h + 'px' }
+    const top = vv && !(!focused && now < until) ? vv.offsetTop : 0;
+    body.style.transform = top > .5 ? `translate3d(0,${top}px,0)` : '';
+    if (focused && vv && innerHeight - vv.height > 120 && now >= until - 300) { kbH = Math.round(innerHeight - vv.height); store.set('kbh', kbH) }
     if (window.scrollY) scrollTo(0, 0);
-    follow();
   };
-  if (vv) { vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit) }
-  inp.addEventListener('focus', () => { body.classList.add('kb'); fit() });
-  inp.addEventListener('blur', () => { body.classList.remove('kb'); fit() });
+  const queue = () => { raf ||= requestAnimationFrame(apply) };
+  if (vv) { vv.addEventListener('resize', queue); vv.addEventListener('scroll', queue) }
+  inp.addEventListener('focus', () => {
+    focused = true; until = performance.now() + 600;
+    body.classList.add('kb'); queue(); setTimeout(queue, 650);
+  });
+  inp.addEventListener('blur', () => {
+    focused = false; until = performance.now() + 600;
+    body.classList.remove('kb'); queue(); setTimeout(queue, 650);
+  });
+  addEventListener('resize', () => { if (!focused) { measure(); queue() } });
+  addEventListener('orientationchange', () => setTimeout(() => { measure(); queue() }, 300));
+  measure(); document.fonts?.ready.then(measure);
+  // stop iOS from dragging the whole page around while the keyboard is up
+  document.addEventListener('touchmove', e => { if (!e.target.closest('.log,#tabs,.sr,dialog,#notis')) e.preventDefault() }, { passive: false });
+}
+
+// ---------- swipe left / right to move between chats ----------
+{
+  const area = $('#chat');
+  let st = null, nb = null, nbName = null, W = 0, names = [], idx = 0, dragged = 0;
+  const reset = el => { if (el) { el.classList.remove('peek', 'anim'); el.style.transform = '' } };
+  area.addEventListener('pointerdown', e => {
+    if (e.pointerType == 'mouse' && e.button) return;
+    names = Object.keys(chans);
+    if (names.length < 2 || !chans[cur] || st?.settling) return;
+    st = { id: e.pointerId, x: e.clientX, y: e.clientY, lock: null, d: 0, v: 0, lx: e.clientX, lt: performance.now() };
+  });
+  area.addEventListener('pointermove', e => {
+    if (!st || st.settling || e.pointerId != st.id) return;
+    const dx = e.clientX - st.x, dy = e.clientY - st.y;
+    if (!st.lock) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      if (Math.abs(dx) > Math.abs(dy) * 1.3) {
+        st.lock = 'x'; W = area.clientWidth; idx = names.indexOf(cur);
+        try { area.setPointerCapture(e.pointerId) } catch {}
+        reset(chans[cur].el);
+      } else { st = null; return }
+    }
+    const now = performance.now(), dt = now - st.lt;
+    if (dt > 0) st.v = .6 * st.v + .4 * ((e.clientX - st.lx) / dt);
+    st.lx = e.clientX; st.lt = now;
+    let d = dx;
+    const dir = d < 0 ? 1 : -1, ni = idx + dir, target = chans[names[ni]];
+    if (!target) d *= .3; // nothing further that way: rubber-band
+    chans[cur].el.style.transform = `translate3d(${d}px,0,0)`;
+    if (target) {
+      if (nb !== target.el) { reset(nb); nb = target.el; nbName = names[ni]; nb.classList.add('peek') }
+      nb.style.transform = `translate3d(${d + (dir > 0 ? W : -W)}px,0,0)`;
+    } else { reset(nb); nb = null; nbName = null }
+    st.d = d;
+  });
+  const end = e => {
+    if (!st || e.pointerId != st.id) return;
+    if (st.lock != 'x') { st = null; return }
+    const s = st, d = s.d, ccEl = chans[cur]?.el, nbEl = nb, to = nbName;
+    dragged = Date.now(); s.settling = true;
+    const commit = !!nbEl && (Math.abs(d) > W * .33 || (Math.abs(s.v) > .45 && Math.sign(s.v) == Math.sign(d)));
+    let done = false;
+    const fin = () => {
+      if (done) return; done = true;
+      reset(ccEl); reset(nbEl);
+      if (commit && chans[to]) show(to);
+      st = null; nb = null; nbName = null;
+    };
+    if (!ccEl) { fin(); return }
+    ccEl.classList.add('anim'); nbEl?.classList.add('anim');
+    requestAnimationFrame(() => {
+      if (commit) { ccEl.style.transform = `translate3d(${d < 0 ? -W : W}px,0,0)`; nbEl.style.transform = 'translate3d(0,0,0)' }
+      else { ccEl.style.transform = 'translate3d(0,0,0)'; if (nbEl) nbEl.style.transform = `translate3d(${d < 0 ? W : -W}px,0,0)` }
+    });
+    ccEl.addEventListener('transitionend', fin, { once: true });
+    setTimeout(fin, 380);
+  };
+  area.addEventListener('pointerup', end);
+  area.addEventListener('pointercancel', end);
+  area.addEventListener('click', e => { if (Date.now() - dragged < 350) { e.stopPropagation(); e.preventDefault() } }, true);
 }
 
 // ---------- autocomplete: @names, plus 7TV / BTTV / FFZ / Twitch emote previews as you type ----------
@@ -766,11 +877,12 @@ const saveAccts = () => store.set('accts', accts);
 function upsertAcct(a) { accts = accts.filter(x => x.u != a.u); accts.push({ u: a.u, t: a.t, id: a.id }); saveAccts() }
 function setAuth(a) {
   if (spam) spam.stop = true;
+  saveChs(); // park the outgoing account's open chats under its own name
   auth = a ? { u: a.u, t: a.t, id: a.id } : {};
   store.set('auth', auth);
   cfg = loadCfg(); applyCfg();
-  sentLog.length = 0; for (const k in chans) chans[k].me = null;
-  reconnect(); loadTwEmotes(); if (cur && chans[cur]) show(cur);
+  sentLog.length = 0;
+  teardown(); reconnect(); loadTwEmotes(); loadSession(); // the new account gets its own session
   if ($('#dlg').open) renderSettings();
 }
 async function switchTo(a) {
@@ -781,6 +893,7 @@ async function switchTo(a) {
 function removeAcct(a) {
   accts = accts.filter(x => x.u != a.u); saveAccts();
   if (auth.u == a.u) setAuth(null); else if ($('#dlg').open) renderSettings();
+  try { localStorage.removeItem('chs:' + a.u); localStorage.removeItem('cur:' + a.u) } catch {}
 }
 function startLogin(id) {
   store.set('cid', id);
@@ -850,6 +963,7 @@ function renderSettings() {
       if (!id) { cid.focus(); return }
       startLogin(id);
     }));
+    if (accts.length) sb.append(el('div', 'note', 'Adding an account starts a fresh session for it. Your other accounts, with their open chats, stay saved here: switch back any time.'));
     const c = chans[cur];
     if (on && c) {
       sb.append(grp('Current channel · #' + c.name));
@@ -909,10 +1023,7 @@ async function finishLogin() {
 const loginDone = finishLogin();
 const globalsReady = loginDone.then(loadGlobals);
 loginDone.then(loadTwEmotes);
-loginDone.then(() => {
-  for (const n of store.get('chs', [])) open(n);
-  connect();
-});
+loginDone.then(() => { loadSession(); connect() });
 </script>
 </body>
 </html>
