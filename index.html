@@ -10,14 +10,20 @@
 :root[data-theme=black]{--bg:#000;--card:#0b0b0d;--line:#2a2a2a;--rowline:#1a1a1a;--alt:#0b0b0b;--chip:#16161a}
 :root[data-theme=light]{color-scheme:light;--bg:#fff;--fg:#0e0e10;--card:#f4f4f5;--line:#d4d4d8;--rowline:#e4e4e7;--alt:#f6f6f8;--chip:#e9e9ee;--mut:#6b6b75}
 *{box-sizing:border-box}
-html,body{height:100%;margin:0}
-body{display:flex;flex-direction:column;height:100dvh;background:var(--bg);color:var(--fg);font:var(--fs)/1.5 var(--ff);padding-top:env(safe-area-inset-top)}
+html,body{height:100%;margin:0;overflow:hidden}
+body{position:fixed;top:0;left:0;right:0;display:flex;flex-direction:column;height:100dvh;background:var(--bg);color:var(--fg);font:var(--fs)/1.5 var(--ff);padding-top:env(safe-area-inset-top)}
 header,form{display:flex;gap:6px;padding:8px}
 form{padding-bottom:4px}
+body.kb #bar{display:none}
+body.kb form{padding-bottom:6px}
 #bar{display:flex;align-items:center;gap:6px;padding:0 8px calc(8px + env(safe-area-inset-bottom))}
 input,select{flex:1;min-width:0;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:16px;font-family:inherit}
 button{background:var(--p);color:var(--pt);border:0;border-radius:8px;padding:0 14px;font-size:15px;min-height:40px;font-family:inherit}
 button.sec{background:var(--chip);color:var(--fg)}
+#sug{display:none;gap:6px;overflow-x:auto;padding:4px 8px 0;flex:none}
+#sug.on{display:flex}
+#sug button{background:var(--chip);color:var(--fg);white-space:nowrap;min-height:34px;padding:0 12px}
+#sug button b{color:var(--p)}
 #send{touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;min-width:64px}
 #send.hot{background:#e91916;color:#fff}
 #tabs{display:flex;overflow-x:auto;gap:4px;flex:1;min-width:0}
@@ -26,8 +32,9 @@ button.sec{background:var(--chip);color:var(--fg)}
 #tabs .new{outline:2px solid var(--p)}
 #chat{flex:1;min-height:0;display:flex;flex-direction:column}
 .log{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 10px;display:none;overscroll-behavior:contain}
-.log.on{display:block}
-.m{padding:var(--pad) 10px;margin:0 -10px;border-bottom:1px solid var(--rowline);word-break:break-word}
+.log.on{display:flex;flex-direction:column}
+.log>.m:first-child{margin-top:auto}
+.m{flex:none;padding:var(--pad) 10px;margin:0 -10px;border-bottom:1px solid var(--rowline);word-break:break-word}
 .m:nth-child(even){background:var(--alt)}
 .noalt .m:nth-child(even){background:none}
 .m.hl{background:color-mix(in srgb,var(--hl) 22%,transparent)!important;box-shadow:inset 3px 0 var(--hl)}
@@ -37,11 +44,14 @@ button.sec{background:var(--chip);color:var(--fg)}
 .nm{cursor:pointer}
 .m.h{opacity:.6}
 .b{height:var(--bs);width:var(--bs);vertical-align:middle;margin-right:3px}
-.bd-tw .t3,.bd-none .b{display:none}
 .e{height:var(--es);vertical-align:middle;margin:0 1px}
-.noemote .em:not(.x) img,.notp .em.tp:not(.x) img{display:none}
-.noemote .em:not(.x)::before,.notp .em.tp:not(.x)::before{content:attr(data-t)}
 .act{font-style:italic}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border-radius:8px;padding:3px 8px 3px 4px;font-size:13px}
+.chip img{height:24px;width:24px;margin:0}
+#notis{position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:8px;right:8px;z-index:50;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.noti{pointer-events:auto;background:var(--card);color:var(--fg);border:1px solid var(--p);border-left-width:5px;border-radius:10px;padding:8px 12px;box-shadow:0 6px 20px #0008;animation:dn .2s ease-out;font-size:14px;word-break:break-word}
+.noti b{display:block;color:var(--p)}
+@keyframes dn{from{transform:translateY(-120%);opacity:0}}
 dialog{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:12px;width:min(94vw,440px);padding:0}
 dialog::backdrop{background:#0009}
 #card{padding:16px}
@@ -70,6 +80,7 @@ dialog::backdrop{background:#0009}
 </head>
 <body>
 <div id="chat"></div>
+<div id="sug"></div>
 <form id="f">
   <input id="in" placeholder="Send a message" autocomplete="off" enterkeyhint="send">
   <button id="send">Send</button>
@@ -79,6 +90,7 @@ dialog::backdrop{background:#0009}
   <button id="add" aria-label="Add channel">+</button>
   <button id="cog" aria-label="Settings">⚙</button>
 </nav>
+<div id="notis"></div>
 <dialog id="card"></dialog>
 <dialog id="dlg">
   <div id="dh"><b>Settings</b><button id="close" class="sec" aria-label="Close">✕</button></div>
@@ -99,7 +111,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // ---------- settings (saved per Twitch account, guests share "guest") ----------
 const DEF = {
   theme: 'dark', accent: '#9147ff', font: 'sys', fs: 15, pad: 7, alt: true, fixc: true, es: 28, bs: 22,
-  ts: true, h12: false, badges: 'all', emotes: true, tpemotes: true, paints: true, hist: true, max: 500,
+  ts: true, h12: false, hist: true, max: 500,
+  noti: true, banner: true, bdur: 6, sysnoti: false, sound: 'ding', vol: 70,
   hl: true, hlc: '#ffb300', mutew: '', muteu: '',
   spam: true, hold: 400, modburst: true, dupfix: true, maxspam: 0
 };
@@ -116,15 +129,14 @@ function applyCfg() {
   s.setProperty('--fs', cfg.fs + 'px'); s.setProperty('--es', cfg.es + 'px'); s.setProperty('--bs', cfg.bs + 'px');
   s.setProperty('--pad', cfg.pad + 'px'); s.setProperty('--hl', cfg.hlc); s.setProperty('--ff', FONTS[cfg.font] || FONTS.sys);
   const b = document.body.classList;
-  b.toggle('nots', !cfg.ts); b.toggle('noalt', !cfg.alt); b.toggle('noemote', !cfg.emotes); b.toggle('notp', !cfg.tpemotes);
-  b.toggle('bd-tw', cfg.badges == 'tw'); b.toggle('bd-none', cfg.badges == 'none');
+  b.toggle('nots', !cfg.ts); b.toggle('noalt', !cfg.alt);
 }
 applyCfg();
 
 const fix = u => u.startsWith('//') ? 'https:' + u : u;
 const j = async u => { try { const r = await fetch(u); return r.ok ? await r.json() : null } catch { return null } };
 const hsl = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 60% ${cfg.theme == 'light' ? 35 : 65}%)` };
-const badges = (d, o) => { for (const [s, v] of Object.entries(d?.badge_sets || {})) for (const [k, x] of Object.entries(v.versions)) o[s + '/' + k] = x.image_url_2x || x.image_url_1x };
+const badges = (d, o) => { for (const [s, v] of Object.entries(d?.badge_sets || {})) for (const [k, x] of Object.entries(v.versions)) { o[s + '/' + k] = x.image_url_2x || x.image_url_1x; o['t:' + s + '/' + k] = x.title } };
 const seven = (l, o) => { for (const e of l || []) { const h = e.data?.host?.url; if (h) o[e.name] = fix(h) + '/2x.webp' } };
 const bttv = (l, o) => { for (const e of l || []) o[e.code] = `https://cdn.betterttv.net/emote/${e.id}/2x.webp` };
 
@@ -133,7 +145,7 @@ const hx = u => auth.t ? fetch(u, { headers: { 'Client-Id': CLIENT_ID, Authoriza
 // Twitch badges: official Helix API when logged in, old public endpoint as fallback
 async function getBadges(kind, room, o) {
   const h = await hx(kind == 'g' ? 'https://api.twitch.tv/helix/chat/badges/global' : 'https://api.twitch.tv/helix/chat/badges?broadcaster_id=' + room);
-  if (h?.data) { for (const st of h.data) for (const v of st.versions) o[st.set_id + '/' + v.id] = v.image_url_2x || v.image_url_1x; return }
+  if (h?.data) { for (const st of h.data) for (const v of st.versions) { o[st.set_id + '/' + v.id] = v.image_url_2x || v.image_url_1x; o['t:' + st.set_id + '/' + v.id] = v.title } return }
   badges(await j(kind == 'g' ? 'https://badges.twitch.tv/v1/badges/global/display' : `https://badges.twitch.tv/v1/badges/channels/${room}/display`), o);
 }
 // 7TV badge per user (looked up once, cached)
@@ -176,12 +188,12 @@ async function loadGlobals() {
   ]);
   seven(s?.emotes, G.emotes);
   bttv(b, G.emotes);
-  for (const x of bb || []) if (x.badge?.svg) G.bttvBadge[x.providerId] = x.badge.svg;
-  for (const x of ch?.badges || []) for (const u of x.users || []) (G.chatterino[u] ||= []).push(x.image2 || x.image1);
-  for (const x of (Array.isArray(dk) ? dk : dk?.badges) || []) for (const u of x.users || []) (G.dank[u] ||= []).push(x.url);
+  for (const x of bb || []) if (x.badge?.svg) G.bttvBadge[x.providerId] = { u: x.badge.svg, t: x.badge.description || 'BetterTTV badge' };
+  for (const x of ch?.badges || []) for (const u of x.users || []) (G.chatterino[u] ||= []).push({ u: x.image2 || x.image1, t: x.tooltip || 'Chatterino badge' });
+  for (const x of (Array.isArray(dk) ? dk : dk?.badges) || []) for (const u of x.users || []) (G.dank[u] ||= []).push({ u: x.url, t: x.tooltip || 'Badge' });
   if (ffz) for (const x of ffz.badges) {
     const img = fix(x.urls['2'] || x.urls['1']);
-    for (const u of ffz.users[x.id] || []) (G.ffz[u] ||= []).push(img);
+    for (const u of ffz.users[x.id] || []) (G.ffz[u] ||= []).push({ u: img, c: x.color, t: x.title || x.name || 'FFZ badge' }); // FFZ glyphs are white: the colored background comes from x.color
   }
 }
 
@@ -230,12 +242,12 @@ function muted(m) {
 
 function onIrc(m) {
   if (m.cmd == 'NOTICE' && /authentication failed|improperly formatted auth/i.test(m.trailing || '')) {
-    auth = {}; store.set('auth', auth); cfg = loadCfg(); applyCfg(); reconnect();
+    accts = accts.filter(x => x.u != auth.u); saveAccts(); auth = {}; store.set('auth', auth); cfg = loadCfg(); applyCfg(); reconnect();
     alert('Twitch login expired. Tap ⚙ to log in again.'); return;
   }
   const c = chans[(m.params[0] || '').replace('#', '')];
   if (!c) return;
-  if (m.cmd == 'PRIVMSG') { if (!muted(m)) push(c, mkMsg(m, c)) }
+  if (m.cmd == 'PRIVMSG') { if (!muted(m)) { mention(c, m); push(c, mkMsg(m, c)) } }
   else if (m.cmd == 'ROOMSTATE') {
     if ('slow' in m.tags) c.slow = +m.tags.slow || 0;
     if (!c.room && m.tags['room-id']) load(c, m.tags['room-id']);
@@ -253,7 +265,7 @@ function mkMsg(m, c, hist) {
   if (text.startsWith('\x01ACTION ')) { action = true; text = text.slice(8).replace(/\x01/g, '') }
   const d = document.createElement('div');
   d.className = 'm' + (hist ? ' h' : '');
-  const img = (url, cls, parent) => { const i = new Image(); i.src = url; i.className = cls; i.loading = 'lazy'; i.onerror = () => i.remove(); parent.append(i) };
+  const img = (url, cls, parent, title, bg) => { const i = new Image(); i.src = url; i.className = cls; i.loading = 'lazy'; i.title = i.alt = title || ''; if (bg) { i.style.backgroundColor = bg; i.style.borderRadius = '4px' } i.onerror = () => i.remove(); parent.append(i) };
   if (cfg.hl && auth.u && (m.nick || '').toLowerCase() != auth.u.toLowerCase() &&
       new RegExp('(^|\\W)@?' + auth.u.replace(/\W/g, '') + '(?!\\w)', 'i').test(text)) d.classList.add('hl');
 
@@ -262,21 +274,22 @@ function mkMsg(m, c, hist) {
   d.append(tm);
   const bs = document.createElement('span'); d.append(bs);
   const uid = m.tags['user-id'];
-  for (const b of (m.tags.badges || '').split(',')) { const u = c.badges[b] || G.badges[b]; if (u) img(u, 'b', bs) }
-  for (const u of G.ffz[uid] || []) img(u, 'b t3', bs);
-  if (G.bttvBadge[uid]) img(G.bttvBadge[uid], 'b t3', bs);
-  for (const x of G.chatterino[uid] || []) img(x, 'b t3', bs);
-  for (const x of G.dank[uid] || []) img(x, 'b t3', bs);
+  for (const b of (m.tags.badges || '').split(',')) { const u = c.badges[b] || G.badges[b]; if (u) img(u, 'b', bs, c.badges['t:' + b] || G.badges['t:' + b] || b.split('/')[0]) }
+  for (const x of G.ffz[uid] || []) img(x.u, 'b', bs, x.t, x.c);
+  const bt = G.bttvBadge[uid]; if (bt) img(bt.u, 'b', bs, bt.t);
+  for (const x of G.chatterino[uid] || []) img(x.u, 'b', bs, x.t);
+  for (const x of G.dank[uid] || []) img(x.u, 'b', bs, x.t);
   if (uid) sevenUser(uid).then(async st => {
     if (!st) return;
-    if (st.badge_id) img(`https://cdn.7tv.app/badge/${st.badge_id}/2x.webp`, 'b t3', bs);
-    if (st.paint_id && cfg.paints) { const pt = await sevenPaint(st.paint_id); if (pt) paint(n, pt) }
+    if (st.badge_id) img(`https://cdn.7tv.app/badge/${st.badge_id}/2x.webp`, 'b', bs, '7TV badge');
+    if (st.paint_id) { const pt = await sevenPaint(st.paint_id); if (pt) paint(n, pt) }
   });
 
   const name = m.tags['display-name'] || m.nick;
+  if (c.users && m.nick) c.users[m.nick.toLowerCase()] = { n: name, t: +m.tags['tmi-sent-ts'] || Date.now() }; // for @ autocomplete
   const color = fixColor(m.tags.color) || hsl(name);
   const n = document.createElement('b'); n.textContent = name; n.style.color = color;
-  n.className = 'nm'; n.dataset.login = m.nick || ''; n.dataset.uid = uid || '';
+  n._b = bs; n.className = 'nm'; n.dataset.login = m.nick || ''; n.dataset.uid = uid || '';
   const bi = (m.tags['badge-info'] || '').split(',').find(x => /^(subscriber|founder)\//.test(x));
   n.dataset.sub = bi ? bi.split('/')[1] : '';
   d.append(n, action ? ' ' : ': ');
@@ -330,6 +343,55 @@ function sys(c, text) {
   const d = document.createElement('div'); d.className = 'm sys'; d.textContent = text; push(c, d);
 }
 
+// ---------- @mention alerts: banner + sound ----------
+let customSnd = store.get('snd', null), actx = null, lastAlert = 0;
+const audioCtx = () => actx ||= new (window.AudioContext || window.webkitAudioContext)();
+for (const t of ['pointerdown', 'keydown']) addEventListener(t, () => { try { const c = audioCtx(); if (c.state == 'suspended') c.resume() } catch {} }, { once: true, capture: true });
+const TONES = {
+  ding: [[880, 0, .25, 'sine'], [1320, .08, .4, 'sine']],
+  chime: [[659, 0, .25, 'sine'], [784, .13, .25, 'sine'], [988, .26, .5, 'sine']],
+  bell: [[1047, 0, .9, 'sine'], [2093, 0, .5, 'sine'], [3136, 0, .25, 'sine']],
+  pop: [[420, 0, .09, 'triangle'], [260, .03, .09, 'triangle']],
+  blip: [[1200, 0, .07, 'square'], [1600, .09, .07, 'square']],
+  coin: [[988, 0, .08, 'square'], [1319, .08, .35, 'square']],
+  alert: [[740, 0, .16, 'sawtooth'], [740, .22, .16, 'sawtooth'], [988, .44, .25, 'sawtooth']]
+};
+function playSound() {
+  const v = cfg.vol / 100; if (cfg.sound == 'none' || !v) return;
+  try {
+    if (cfg.sound == 'custom' && customSnd?.data) { const a = new Audio(customSnd.data); a.volume = v; a.play().catch(() => {}); return }
+    const ctx = audioCtx(); if (ctx.state == 'suspended') ctx.resume();
+    const t0 = ctx.currentTime;
+    for (const [f, st, d, type] of TONES[TONES[cfg.sound] ? cfg.sound : 'ding']) {
+      const o = ctx.createOscillator(), g = ctx.createGain(), peak = .25 * v * (type == 'sine' || type == 'triangle' ? 1 : .5);
+      o.type = type; o.frequency.value = f;
+      g.gain.setValueAtTime(.0001, t0 + st); g.gain.exponentialRampToValueAtTime(peak, t0 + st + .01); g.gain.exponentialRampToValueAtTime(.0001, t0 + st + d);
+      o.connect(g).connect(ctx.destination); o.start(t0 + st); o.stop(t0 + st + d + .02);
+    }
+  } catch {}
+}
+function banner(c, who, text) {
+  const box = $('#notis'), d = document.createElement('div'); d.className = 'noti';
+  const h = document.createElement('b'); h.textContent = `@ ${who} · #${c.name}`;
+  const t = document.createElement('div'); t.textContent = text.slice(0, 160);
+  d.append(h, t);
+  d.onclick = () => { if (chans[c.name]) show(c.name); d.remove() };
+  box.prepend(d);
+  while (box.children.length > 3) box.lastChild.remove();
+  setTimeout(() => d.remove(), cfg.bdur * 1000);
+}
+function mention(c, m) {
+  if (!cfg.noti || !auth.u || (m.nick || '').toLowerCase() == auth.u.toLowerCase()) return;
+  let text = m.trailing || '';
+  if (text.startsWith('\x01ACTION ')) text = text.slice(8).replace(/\x01/g, '');
+  if (!new RegExp('(^|\\W)@' + auth.u.replace(/\W/g, '') + '(?!\\w)', 'i').test(text)) return;
+  const now = Date.now(), quiet = now - lastAlert < 700; lastAlert = now; // avoid machine-gun sounds
+  const who = m.tags['display-name'] || m.nick;
+  if (!quiet) playSound();
+  if (cfg.banner) banner(c, who, text);
+  if (cfg.sysnoti && document.hidden) try { if (Notification.permission == 'granted') new Notification(`${who} mentioned you in #${c.name}`, { body: text }) } catch {}
+}
+
 // ---------- per-channel assets + chat history ----------
 async function load(c, room) {
   c.room = room;
@@ -362,7 +424,7 @@ function tabs() {
   }
 }
 function show(n) {
-  cur = n; chans[n].unread = false;
+  cur = n; chans[n].unread = false; $('#sug').classList.remove('on');
   for (const k in chans) chans[k].el.classList.toggle('on', k == n);
   $('#in').placeholder = 'Message #' + n + (auth.u ? ' as ' + auth.u : '');
   tabs(); chans[n].el.scrollTop = chans[n].el.scrollHeight;
@@ -379,7 +441,7 @@ function open(name) {
   if (!chans[name]) {
     const el = document.createElement('div'); el.className = 'log';
     $('#chat').append(el);
-    chans[name] = { name, el, badges: {}, emotes: {}, room: null, slow: 0 };
+    chans[name] = { name, el, badges: {}, emotes: {}, room: null, slow: 0, users: {} };
     store.set('chs', Object.keys(chans));
     if (ws && ws.readyState == 1) ws.send('JOIN #' + name);
   }
@@ -463,6 +525,57 @@ $('#f').onsubmit = e => {
   if (sendMsg(c, text)) $('#in').value = '';
 };
 
+// ---------- keyboard: keep the input bar flush above the on-screen keyboard (like Chatsen) ----------
+{
+  const vv = window.visualViewport, inp = $('#in');
+  const fit = () => {
+    const c = chans[cur], was = c && c.el.scrollHeight - c.el.scrollTop - c.el.clientHeight < 80;
+    document.body.style.height = (vv ? vv.height : innerHeight) + 'px';
+    document.body.style.top = (vv ? vv.offsetTop : 0) + 'px';
+    if (c && was) c.el.scrollTop = c.el.scrollHeight;
+  };
+  if (vv) { vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit) }
+  inp.addEventListener('focus', () => { document.body.classList.add('kb'); fit(); setTimeout(() => { scrollTo(0, 0); fit() }, 250) });
+  inp.addEventListener('blur', () => { document.body.classList.remove('kb'); setTimeout(fit, 100) });
+}
+
+// ---------- @ autocomplete: type @ + letters to pick from people who have chatted ----------
+{
+  const inp = $('#in'), box = $('#sug');
+  const query = () => { const m = /(^|\s)@(\w*)$/.exec(inp.value.slice(0, inp.selectionStart)); return m ? m[2].toLowerCase() : null };
+  function pick(name) {
+    const pos = inp.selectionStart, before = inp.value.slice(0, pos), at = before.lastIndexOf('@');
+    const ins = '@' + name + ' ';
+    inp.value = before.slice(0, at) + ins + inp.value.slice(pos);
+    inp.setSelectionRange(at + ins.length, at + ins.length);
+    box.classList.remove('on'); inp.focus();
+  }
+  function upd() {
+    const c = chans[cur], q = query();
+    if (!c || q === null) { box.classList.remove('on'); return }
+    const me = (auth.u || '').toLowerCase();
+    const all = Object.entries(c.users || {}).filter(([k]) => k != me && k.includes(q) || (k != me && c.users[k].n.toLowerCase().includes(q)));
+    all.sort((a, b) => (b[0].startsWith(q) - a[0].startsWith(q)) || b[1].t - a[1].t);
+    const top = all.slice(0, 15);
+    box.replaceChildren();
+    for (const [, u] of top) {
+      const b = document.createElement('button'); b.type = 'button';
+      const i = q ? u.n.toLowerCase().indexOf(q) : -1;
+      if (i >= 0) { b.append('@' + u.n.slice(0, i)); const h = document.createElement('b'); h.textContent = u.n.slice(i, i + q.length); b.append(h, u.n.slice(i + q.length)) }
+      else b.textContent = '@' + u.n;
+      b.addEventListener('mousedown', e => e.preventDefault()); // keep the keyboard open
+      b.onclick = () => pick(u.n);
+      box.append(b);
+    }
+    box.classList.toggle('on', top.length > 0);
+  }
+  inp.addEventListener('input', upd);
+  inp.addEventListener('click', upd);
+  inp.addEventListener('keyup', e => { if (e.key.startsWith('Arrow')) upd() });
+  inp.addEventListener('keydown', e => { if (e.key == 'Tab' && box.classList.contains('on')) { e.preventDefault(); box.firstChild?.click() } });
+  $('#f').addEventListener('submit', () => box.classList.remove('on'));
+}
+
 // ---------- UI ----------
 $('#add').onclick = () => { const n = prompt('Channel name'); if (n) open(n) };
 
@@ -489,6 +602,10 @@ async function openCard(n) {
   const av = new Image(); av.style.cssText = 'width:56px;height:56px;border-radius:50%;background:var(--chip)'; av.onerror = () => av.removeAttribute('src');
   const nm = document.createElement('b'); nm.textContent = n.textContent; nm.style.cssText = n.style.cssText; nm.style.fontSize = '18px';
   head.append(av, nm); card.append(head);
+  const bv = row('Badges'); bv.textContent = '';
+  const bl = [...(n._b?.children || [])];
+  if (bl.length) { bv.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px'; for (const b of bl) { const ch = el('span', 'chip'); ch.append(b.cloneNode(true), el('span', null, b.title || 'Badge')); bv.append(ch) } }
+  else bv.textContent = 'None';
   const fol = row('Following since'), sb = row('Subscription'), cr = row('Account created');
   const cb = document.createElement('button'); cb.textContent = 'Close'; cb.style.cssText = 'width:100%;margin-top:6px'; cb.onclick = () => card.close();
   card.append(cb); card.showModal();
@@ -532,10 +649,6 @@ const FIELDS = {
     ['h', 'Display'],
     { k: 'ts', t: 'bool', l: 'Show timestamps' },
     { k: 'h12', t: 'bool', l: '12-hour clock', h: 'New messages' },
-    { k: 'badges', t: 'sel', l: 'Badges', o: [['all', 'All'], ['tw', 'Twitch only'], ['none', 'Hidden']] },
-    { k: 'emotes', t: 'bool', l: 'Show emotes', h: 'Off shows the emote name as text' },
-    { k: 'tpemotes', t: 'bool', l: 'Show 7TV / BTTV / FFZ emotes' },
-    { k: 'paints', t: 'bool', l: '7TV name paints', h: 'New messages' },
     ['h', 'Behavior'],
     { k: 'hist', t: 'bool', l: 'Load recent history on join', h: 'Applies the next time a channel opens' },
     { k: 'max', t: 'range', l: 'Messages kept per channel', min: 100, max: 2000, step: 100 },
@@ -544,6 +657,16 @@ const FIELDS = {
     { k: 'hlc', t: 'color', l: 'Highlight color' },
     { k: 'mutew', t: 'text', l: 'Muted words', p: 'word, word', h: 'Comma separated' },
     { k: 'muteu', t: 'text', l: 'Muted users', p: 'user, user', h: 'Comma separated' }
+  ],
+  Alerts: [
+    ['h', 'Mentions'],
+    { k: 'noti', t: 'bool', l: 'Alert when someone @mentions me', h: 'Works in every channel you have open' },
+    { k: 'banner', t: 'bool', l: 'Show a banner at the top', h: 'Tap it to jump to that chat' },
+    { k: 'bdur', t: 'range', l: 'Banner stays for', min: 2, max: 20, u: 's' },
+    { k: 'sysnoti', t: 'bool', l: 'System notification when app is in background', h: 'Asks permission; not supported in every browser', after: () => { if (cfg.sysnoti) try { Notification.requestPermission() } catch {} } },
+    ['h', 'Sound'],
+    { k: 'sound', t: 'sel', l: 'Sound', o: [['none', 'None'], ['ding', 'Ding'], ['chime', 'Chime'], ['bell', 'Bell'], ['pop', 'Pop'], ['blip', 'Blip'], ['coin', 'Coin'], ['alert', 'Alert'], ['custom', 'My own file']], after: () => playSound() },
+    { k: 'vol', t: 'range', l: 'Volume', min: 0, max: 100, step: 5, u: '%', after: () => playSound() }
   ],
   Send: [
     ['h', 'Hold to spam'],
@@ -579,42 +702,102 @@ function mkField(f) {
     cfg[f.k] = f.t == 'bool' ? c.checked : f.t == 'range' ? +c.value : c.value;
     saveCfg(); applyCfg(); if (out) out.textContent = fmt();
   });
+  if (f.after) c.addEventListener('change', f.after);
   row.append(l);
   if (f.t == 'range') { out = el('span', 'val', fmt()); row.append(out) }
   row.append(c);
   return row;
 }
 
+// accounts: every login is kept here; `auth` is the active one
+let accts = store.get('accts', []);
+const saveAccts = () => store.set('accts', accts);
+function upsertAcct(a) { accts = accts.filter(x => x.u != a.u); accts.push({ u: a.u, t: a.t, id: a.id }); saveAccts() }
+function setAuth(a) {
+  if (spam) spam.stop = true;
+  auth = a ? { u: a.u, t: a.t, id: a.id } : {};
+  store.set('auth', auth);
+  cfg = loadCfg(); applyCfg();
+  sentLog.length = 0; for (const k in chans) chans[k].me = null;
+  reconnect(); if (cur && chans[cur]) show(cur);
+  if ($('#dlg').open) renderSettings();
+}
+async function switchTo(a) {
+  const v = await validate(a.t);
+  if (v === null) { removeAcct(a); alert(a.u + "'s login expired. Add the account again."); return }
+  setAuth(a);
+}
+function removeAcct(a) {
+  accts = accts.filter(x => x.u != a.u); saveAccts();
+  if (auth.u == a.u) setAuth(null); else if ($('#dlg').open) renderSettings();
+}
+function startLogin(id) {
+  store.set('cid', id);
+  const state = Math.random().toString(36).slice(2);
+  store.set('state', state);
+  location.href = 'https://id.twitch.tv/oauth2/authorize?' + new URLSearchParams({
+    client_id: id, redirect_uri: location.origin + location.pathname,
+    response_type: 'token', scope: 'chat:read chat:edit moderator:read:followers', state, force_verify: 'true'
+  });
+}
+function acctQuick() {
+  const r = el('label', 'row'), s = el('select');
+  r.append(el('span', null, 'Account'));
+  s.add(new Option('Guest (read-only)', ''));
+  for (const a of accts) s.add(new Option(a.u, a.u));
+  s.value = auth.u || '';
+  s.onchange = () => { const a = accts.find(x => x.u == s.value); a ? switchTo(a) : setAuth(null) };
+  r.append(s);
+  return [r, wide('Add account', () => { const id = CLIENT_ID || store.get('cid', ''); if (id) startLogin(id); else openSettings('Account') }, true)];
+}
+function alertExtras(sb) {
+  sb.append(wide('Test alert', () => { playSound(); banner({ name: cur || 'channel' }, 'someone', '@' + (auth.u || 'you') + ' this is a test mention') }, true));
+  const fi = el('input'); fi.type = 'file'; fi.accept = 'audio/*'; fi.hidden = true;
+  fi.onchange = () => {
+    const f = fi.files[0]; if (!f) return;
+    if (f.size > 1.5e6) { alert('Please pick a sound under 1.5 MB.'); return }
+    const r = new FileReader();
+    r.onload = () => {
+      store.set('snd', { name: f.name, data: r.result });
+      if (!store.get('snd')) { alert('That file is too large to save on this device.'); return }
+      customSnd = store.get('snd'); cfg.sound = 'custom'; saveCfg(); playSound(); renderSettings();
+    };
+    r.readAsDataURL(f);
+  };
+  sb.append(fi, wide('Choose my own sound file…', () => fi.click(), true));
+  if (customSnd) {
+    sb.append(kv('Custom sound', customSnd.name));
+    sb.append(wide('Remove custom sound', () => { customSnd = null; try { localStorage.removeItem('snd') } catch {} if (cfg.sound == 'custom') cfg.sound = 'ding'; saveCfg(); renderSettings() }, true));
+  }
+}
 function openSettings(t) { if (t) stab = t; renderSettings(); if (!$('#dlg').open) $('#dlg').showModal() }
 function renderSettings() {
   const st = $('#st'); st.replaceChildren();
-  for (const n of ['Account', 'Look', 'Chat', 'Send', 'Data']) {
+  for (const n of ['Account', 'Look', 'Chat', 'Send', 'Alerts', 'Data']) {
     const b = el('button', n == stab ? 'on' : '', n); b.onclick = () => { stab = n; renderSettings() }; st.append(b);
   }
   const sb = $('#sb'); sb.replaceChildren();
   const on = !!(auth.u && auth.t);
   if (stab == 'Account') {
-    sb.append(grp('Twitch account'));
-    sb.append(el('div', 'note', on ? 'Logged in as ' + auth.u + '. Your settings are saved for this account on this device.' : 'Not logged in. You can read chat; log in to send messages.'));
-    if (on) sb.append(wide('Log out', () => {
-      if (spam) spam.stop = true;
-      auth = {}; store.set('auth', auth); cfg = loadCfg(); applyCfg(); reconnect(); renderSettings();
-    }, true));
-    else {
-      let cid = null;
-      if (!CLIENT_ID) { cid = el('input'); cid.placeholder = 'Twitch Client ID (one-time)'; cid.autocapitalize = 'none'; cid.autocomplete = 'off'; cid.value = store.get('cid', ''); cid.style.cssText = 'width:100%;margin-top:6px'; sb.append(cid) }
-      sb.append(wide('Login with Twitch', () => {
-        const id = CLIENT_ID || cid.value.trim();
-        if (!id) { cid.focus(); return }
-        store.set('cid', id);
-        const state = Math.random().toString(36).slice(2);
-        store.set('state', state);
-        location.href = 'https://id.twitch.tv/oauth2/authorize?' + new URLSearchParams({
-          client_id: id, redirect_uri: location.origin + location.pathname,
-          response_type: 'token', scope: 'chat:read chat:edit moderator:read:followers', state
-        });
-      }));
+    sb.append(grp('Accounts'));
+    sb.append(el('div', 'note', accts.length ? 'Tap Switch to chat as another account. Settings are saved separately for each account.' : 'Not logged in. You can read chat; log in to send messages.'));
+    for (const a of accts) {
+      const r = el('div', 'row'), l = el('span', null, a.u);
+      if (a.u == auth.u) l.append(el('small', null, 'Active'));
+      r.append(l);
+      if (a.u != auth.u) { const b = el('button', null, 'Switch'); b.onclick = () => switchTo(a); r.append(b) }
+      const x = el('button', 'sec', 'Remove'); x.onclick = () => { if (confirm('Remove ' + a.u + ' from this device?')) removeAcct(a) }; r.append(x);
+      sb.append(r);
     }
+    if (on) sb.append(wide('Use as guest (read-only)', () => setAuth(null), true));
+    let cid = null;
+    if (!CLIENT_ID) { cid = el('input'); cid.placeholder = 'Twitch Client ID (one-time)'; cid.autocapitalize = 'none'; cid.autocomplete = 'off'; cid.value = store.get('cid', ''); cid.style.cssText = 'width:100%;margin-top:8px'; sb.append(cid) }
+    sb.append(wide(accts.length ? 'Add account' : 'Login with Twitch', () => {
+      const id = CLIENT_ID || cid.value.trim();
+      if (!id) { cid.focus(); return }
+      startLogin(id);
+    }));
+    if (accts.length) sb.append(el('div', 'note', 'To add a different account, tap "Not you?" on the Twitch page, or sign in to that account on Twitch first.'));
     const c = chans[cur];
     if (on && c) {
       sb.append(grp('Current channel · #' + c.name));
@@ -625,7 +808,6 @@ function renderSettings() {
     }
   } else if (stab == 'Data') {
     sb.append(grp('Your settings'));
-    sb.append(el('div', 'note', 'Customization is stored on this device, separately for each Twitch account (guests share one profile).'));
     sb.append(wide('Export settings (copy)', () => {
       const s = JSON.stringify(cfg);
       (navigator.clipboard?.writeText(s) || Promise.reject()).then(() => alert('Settings copied.')).catch(() => prompt('Copy your settings:', s));
@@ -643,7 +825,9 @@ function renderSettings() {
       cfg = { ...DEF }; saveCfg(); applyCfg(); renderSettings();
     }, true));
   } else {
+    if (stab == 'Chat') sb.append(grp('Chatting as'), ...acctQuick());
     for (const f of FIELDS[stab]) sb.append(Array.isArray(f) ? grp(f[1]) : mkField(f));
+    if (stab == 'Alerts') alertExtras(sb);
   }
 }
 $('#cog').onclick = () => openSettings('Account');
@@ -662,9 +846,10 @@ async function finishLogin() {
     const ok = h.get('state') == store.get('state');
     history.replaceState(null, '', location.pathname + location.search);
     const v = ok && await validate(tok);
-    if (v) { auth = { u: v.login, t: tok, id: v.user_id }; store.set('auth', auth) }
+    if (v) { auth = { u: v.login, t: tok, id: v.user_id }; store.set('auth', auth); upsertAcct(auth) }
   } else if (auth.t) {
-    if (await validate(auth.t) === null) { auth = {}; store.set('auth', auth) }
+    if (await validate(auth.t) === null) { accts = accts.filter(x => x.u != auth.u); saveAccts(); auth = {}; store.set('auth', auth) }
+    else if (auth.u && !accts.some(x => x.u == auth.u)) upsertAcct(auth); // migrate an existing login
   }
   cfg = loadCfg(); applyCfg(); // load this account's settings
 }
