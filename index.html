@@ -135,6 +135,10 @@ dialog::backdrop{background:#0009}
 body.kb #vid{display:none}
 #bar #tv{padding:0 11px;min-width:0;flex:none}
 #bar #tv.on{background:var(--p);color:var(--pt)}
+#vid .vb{position:absolute;left:8px;top:8px;z-index:2;display:flex;gap:6px;pointer-events:none}
+#vid .vb span{background:#000b;color:#fff;border:1px solid var(--p);border-radius:6px;padding:2px 8px;font-size:12px;line-height:1.4}
+#vid .vb .gold{border-color:#f5b82e;color:#ffd66b}
+#vid .vb.act{pointer-events:auto;cursor:pointer}
 </style>
 </head>
 <body>
@@ -719,7 +723,7 @@ $('#chat').addEventListener('click', e => { // tap a mention to jump to that cha
 
 // ---------- per-channel assets + chat history ----------
 async function load(c, room) {
-  c.room = room;
+  c.room = room; if (cur == c.name) syncSub();
   // 7TV channel emotes: last session's list is used instantly, the fresh one replaces it as soon as it arrives,
   // and neither waits for the other lists (badges, history, BTTV, FFZ ...)
   const ck = 'sv:e:' + room, cc = store.get(ck, null);
@@ -1177,12 +1181,76 @@ function syncVideo() {
   f.src = 'https://player.twitch.tv/?channel=' + encodeURIComponent(c.name) + '&parent=' + encodeURIComponent(host) + '&autoplay=true&muted=false';
   f.allow = 'autoplay; fullscreen; picture-in-picture'; f.allowFullscreen = true; f.title = c.name + ' stream';
   vid.append(f);
+  syncSub();
 }
 tvBtn.onclick = () => { tvOn = !tvOn; store.set('tvOn', tvOn); syncVideo() };
 
+// follow / subscription status of the ACTIVE account for the channel on screen
+const stCache = {};
+async function chanStatus(room) {
+  const k = auth.id + ':' + room, hit = stCache[k]; if (hit && Date.now() - hit.t < 300000) return hit;
+  const H = { 'Client-Id': CLIENT_ID, Authorization: 'Bearer ' + auth.t }, out = { t: Date.now() };
+  const get = async u => { try { const r = await fetch(u, { headers: H }); if (r.status == 401 || r.status == 403) { out.need = true; return null } return r.ok ? await r.json() : null } catch { out.err = true; return null } };
+  const [f, sb] = await Promise.all([
+    get(`https://api.twitch.tv/helix/channels/followed?user_id=${auth.id}&broadcaster_id=${room}`),
+    get(`https://api.twitch.tv/helix/subscriptions/user?broadcaster_id=${room}&user_id=${auth.id}`)]);
+  out.follow = !!f?.data?.length; out.sub = !!sb?.data?.length; out.tier = sb?.data?.[0]?.tier || '';
+  if (!out.need && !out.err) stCache[k] = out;
+  return out;
+}
+async function syncSub() {
+  vid.querySelector('.vb')?.remove();
+  const c = chans[cur]; if (vid.hidden || !c || !c.room || !auth.id || !auth.t) return;
+  const info = await chanStatus(c.room); if (vid.hidden || chans[cur] != c || vid.querySelector('.vb')) return;
+  const box = document.createElement('div'); box.className = 'vb';
+  const chip = (t, gold) => { const e = document.createElement('span'); e.textContent = t; if (gold) e.className = 'gold'; box.append(e) };
+  if (info.need) { box.classList.add('act'); chip('Tap to allow follow / sub info'); box.onclick = () => startLogin(CLIENT_ID) }
+  else {
+    chip(auth.u + (info.follow ? ' · Following' : ' · Not following'));
+    if (info.sub) chip('★ Subscribed' + ({ 1000: ' T1', 2000: ' T2', 3000: ' T3' }[info.tier] || ''), true);
+  }
+  vid.append(box);
+}
+
+// the + button: channels the ACTIVE account follows (live first), or type any channel
+async function openFollowing() {
+  const card = $('#card'); card.replaceChildren();
+  const mk = (tag, txt, cls) => { const e = document.createElement(tag); if (txt != null) e.textContent = txt; if (cls) e.className = cls; return e };
+  const top = mk('div'); top.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
+  const x = mk('button', '✕', 'sec'); x.onclick = () => card.close();
+  const t = mk('b', auth.u ? 'Following · ' + auth.u : 'Add a channel'); t.style.fontSize = '18px'; top.append(t, x);
+  const list = mk('div', null, 'uh'); list.append(mk('div', auth.t ? 'Loading…' : 'Log in to see the channels you follow.'));
+  list.firstChild.style.cssText = 'padding:12px 0;color:var(--mut);text-align:center';
+  const other = mk('button', 'Other channel…', 'sec'); other.style.cssText = 'width:100%;margin-top:8px';
+  other.onclick = () => { const n = prompt('Channel name'); if (n) { card.close(); openChan(n) } };
+  card.append(top, list, other); card.showModal();
+  if (!auth.t || !auth.id) return;
+  const H = { 'Client-Id': CLIENT_ID, Authorization: 'Bearer ' + auth.t };
+  const get = async u => { try { const r = await fetch(u, { headers: H }); return r.status == 401 || r.status == 403 ? 'need' : r.ok ? await r.json() : null } catch { return null } };
+  const me = auth.id;
+  const [live, all] = await Promise.all([get(`https://api.twitch.tv/helix/streams/followed?user_id=${me}&first=100`), get(`https://api.twitch.tv/helix/channels/followed?user_id=${me}&first=100`)]);
+  if (auth.id != me || !card.open) return;
+  list.replaceChildren();
+  if (live == 'need' || all == 'need') {
+    const n = mk('div', 'Allow Kervrino to see who you follow (one-time login).'); n.style.cssText = 'padding:12px 0;color:var(--mut);text-align:center';
+    const b = mk('button', 'Allow'); b.style.cssText = 'display:block;margin:0 auto 8px'; b.onclick = () => startLogin(CLIENT_ID);
+    list.append(n, b); return;
+  }
+  const row = (login, name, info, isLive) => {
+    const b = mk('button', null, 'sec'); b.style.cssText = 'display:flex;width:100%;justify-content:space-between;gap:8px;text-align:left;margin:6px 0;padding:8px 10px;min-height:0';
+    const l = mk('span', (isLive ? '● ' : '') + name); if (isLive) l.style.color = '#e91916';
+    const r = mk('span', info); r.style.cssText = 'color:var(--mut);font-size:12px;text-align:right'; b.append(l, r);
+    b.onclick = () => { card.close(); openChan(login) }; list.append(b);
+  };
+  const seenL = new Set(), fmt = n => n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(n);
+  for (const s of live?.data || []) { seenL.add(s.user_login); row(s.user_login, s.user_name, (s.game_name || '') + ' · ' + fmt(s.viewer_count), true) }
+  for (const c of all?.data || []) if (!seenL.has(c.broadcaster_login)) row(c.broadcaster_login, c.broadcaster_name, 'offline', false);
+  if (!list.children.length) { list.append(mk('div', 'You don\'t follow anyone yet.')); list.firstChild.style.cssText = 'padding:12px 0;color:var(--mut);text-align:center' }
+}
+
 // ---------- UI ----------
 $('#men').onclick = () => { ensureMentions(); if (cur != '@mentions') show('@mentions') };
-$('#add').onclick = () => { const n = prompt('Channel name'); if (n) openChan(n) };
+$('#add').onclick = openFollowing;
 
 // ---------- press & hold a badge or painted name: small note that stays until you tap elsewhere ----------
 const tip = document.createElement('div'); tip.id = 'tip'; tip.setAttribute('popover', 'manual'); document.body.append(tip);
@@ -1490,6 +1558,7 @@ function setAuth(a) {
   reconnect(); loadTwEmotes(); // same chat tabs, now chatting as the new account
   tabs(); saveChs();
   if ($('#dlg').open) renderSettings();
+  syncSub();
 }
 async function switchTo(a) {
   const v = await validate(a.t);
@@ -1507,7 +1576,7 @@ function startLogin(id) {
   store.set('state', state);
   const url = 'https://id.twitch.tv/oauth2/authorize?' + new URLSearchParams({
     client_id: id, redirect_uri: location.origin + location.pathname,
-    response_type: 'token', scope: 'chat:read chat:edit moderator:read:followers user:read:emotes moderator:manage:banned_users moderator:manage:chat_messages moderator:manage:warnings', state, force_verify: 'true'
+    response_type: 'token', scope: 'chat:read chat:edit moderator:read:followers user:read:emotes moderator:manage:banned_users moderator:manage:chat_messages moderator:manage:warnings user:read:follows user:read:subscriptions', state, force_verify: 'true'
   });
   // open in a browser tab: going through twitch.tv links gets grabbed by the Twitch app on phones
   const w = accts.length ? window.open(url, '_blank') : null;
