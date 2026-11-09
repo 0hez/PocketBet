@@ -128,9 +128,17 @@ dialog::backdrop{background:#0009}
 #fdlg button{background:linear-gradient(135deg,#f6e7b8,#c9a24f);color:#2a1a00;font-weight:600;padding:0 26px}
 @keyframes fpop{from{transform:scale(.2) rotate(-30deg);opacity:0}}
 @keyframes fglow{50%{filter:drop-shadow(0 0 12px #f5b82e)}}
+#vid{flex:none;width:100%;height:min(56.25vw,42dvh);background:#000;position:relative}
+#vid[hidden]{display:none}
+#vid iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+#vid .vn{position:absolute;inset:0;display:grid;place-items:center;padding:16px;text-align:center;color:#aaa;font-size:14px}
+body.kb #vid{display:none}
+#bar #tv{padding:0 11px;min-width:0;flex:none}
+#bar #tv.on{background:var(--p);color:var(--pt)}
 </style>
 </head>
 <body>
+<div id="vid" hidden></div>
 <div id="chat"><div id="empty">No channels open<br>Tap + to add one</div><button id="jump" aria-label="Jump to latest messages">↓</button></div>
 <div id="sug"><div class="sr" id="sun"></div><div class="sr" id="sue"></div></div>
 <form id="f">
@@ -140,6 +148,7 @@ dialog::backdrop{background:#0009}
 <nav id="bar">
   <div id="tabs"></div>
   <button id="add" aria-label="Add channel">+</button>
+  <button id="tv" class="sec" aria-label="Watch stream">▶</button>
   <button id="men" class="sec" aria-label="Mentions">@</button>
   <button id="cog" aria-label="Settings">⚙</button>
 </nav>
@@ -796,13 +805,14 @@ function show(n) {
   saveChs(); tabs(true);
   if (c.pin) toBottom(c);
   updJump();
+  syncVideo();
 }
 function close(n) {
   if (ws && ws.readyState == 1) ws.send('PART #' + n);
   const names = real(), i = names.indexOf(n);
   chans[n].ro?.disconnect(); chans[n].el.remove(); delete chans[n];
   const rest = real();
-  if (rest.length) show(rest[Math.min(i, rest.length - 1)]); else { cur = null; saveChs(); tabs(); updJump() }
+  if (rest.length) show(rest[Math.min(i, rest.length - 1)]); else { cur = null; saveChs(); tabs(); updJump(); syncVideo() }
 }
 $('#jump').onclick = () => { const c = chans[cur]; if (!c) return; c.pin = true; c.el.scrollTo({ top: c.el.scrollHeight, behavior: 'smooth' }); c.prog = performance.now() + 600; updJump() };
 function mkLog(name) {
@@ -1150,6 +1160,25 @@ async function loadMine() {
   inp.addEventListener('keydown', e => { if (e.key == 'Tab' && box.classList.contains('on')) { e.preventDefault(); (sue.firstChild || sun.firstChild)?.click() } });
   $('#f').addEventListener('submit', hide);
 }
+
+// ---------- watch the stream (Twitch's own player above the chat) ----------
+const vid = $('#vid'), tvBtn = $('#tv');
+let tvOn = store.get('tvOn', false), tvFor = null;
+function syncVideo() {
+  const c = chans[cur], ok = tvOn && c && cur[0] != '@';
+  tvBtn.classList.toggle('on', tvOn);
+  if (!ok) { vid.hidden = true; vid.replaceChildren(); tvFor = null; return }
+  vid.hidden = false;
+  if (tvFor == c.name) return;
+  tvFor = c.name; vid.replaceChildren();
+  const host = location.hostname;
+  if (!host) { const d = document.createElement('div'); d.className = 'vn'; d.textContent = 'Open the app from its website address (not a saved file) to watch streams.'; vid.append(d); return }
+  const f = document.createElement('iframe');
+  f.src = 'https://player.twitch.tv/?channel=' + encodeURIComponent(c.name) + '&parent=' + encodeURIComponent(host) + '&autoplay=true&muted=false';
+  f.allow = 'autoplay; fullscreen; picture-in-picture'; f.allowFullscreen = true; f.title = c.name + ' stream';
+  vid.append(f);
+}
+tvBtn.onclick = () => { tvOn = !tvOn; store.set('tvOn', tvOn); syncVideo() };
 
 // ---------- UI ----------
 $('#men').onclick = () => { ensureMentions(); if (cur != '@mentions') show('@mentions') };
