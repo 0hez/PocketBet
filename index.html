@@ -1129,8 +1129,8 @@ async function loadMine() {
   }
   function emotesFor(c, q) {
     const seen = new Set(), out = [];
-    // only this channel's emotes (7TV / BTTV / FFZ / Twitch)
-    [c.emotes, c.tw].forEach((src, si) => { for (const k in src) {
+    // this channel's emotes first (7TV / BTTV / FFZ / Twitch), then every Twitch emote your account can use (all your subs) and your own 7TV set
+    [c.emotes, c.tw, G.tw || {}, G.mine || {}].forEach((src, si) => { for (const k in src) {
       if (seen.has(k)) continue;
       const r = rank(k, q); if (r < 0) continue;
       seen.add(k); out.push([r, si, k, src[k]]);
