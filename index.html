@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://7tv.io" crossorigin>
 <title>Chat</title>
 <style>
-:root{color-scheme:dark;--bg:#202020;--fg:#efeff1;--p:#9147ff;--pt:#fff;--card:#18181b;--line:#333;--rowline:#2e2e2e;--alt:#262626;--chip:#26262c;--mut:#8a8a8a;--fs:15px;--es:28px;--bs:22px;--pad:7px;--hl:#ffb300;--ff:system-ui,sans-serif}
+:root{color-scheme:dark;--bg:#1c1c1e;--fg:#efeff1;--p:#9147ff;--pt:#fff;--card:#18181b;--line:#333;--rowline:#2c2c2e;--alt:#2b2b2d;--chip:#26262c;--mut:#8a8a8a;--fs:15px;--es:28px;--bs:22px;--pad:7px;--hl:#ffb300;--ff:system-ui,sans-serif}
 :root[data-theme=black]{--bg:#000;--card:#0b0b0d;--line:#2a2a2a;--rowline:#1a1a1a;--alt:#0b0b0b;--chip:#16161a}
 :root[data-theme=light]{color-scheme:light;--bg:#fff;--fg:#0e0e10;--card:#f4f4f5;--line:#d4d4d8;--rowline:#e4e4e7;--alt:#f6f6f8;--chip:#e9e9ee;--mut:#6b6b75}
 *{box-sizing:border-box}
@@ -41,7 +41,14 @@ button.sec{background:var(--chip);color:var(--fg)}
 #sue button.ld{background:var(--chip);animation:pulse 1s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.55}}
 #sue button img{height:46px;max-width:200px;object-fit:contain;display:block}
-#in{padding:8px 10px}
+#in{padding:8px 4px;background:transparent;border:0;border-radius:0;font-size:18px}
+#in:focus{outline:none}
+#f{border-top:1px solid var(--line);background:var(--bg);align-items:center;padding:4px 10px}
+body.kb #f{padding:2px 10px}
+body.kb #in{padding:7px 4px}
+#send{background:none!important;color:var(--fg);border:2px solid var(--fg);border-radius:50%;width:34px;height:34px;min-width:34px!important;min-height:34px!important;padding:0!important;font-size:18px;line-height:1;display:grid;place-items:center;flex:none}
+#send.hot{background:#e91916!important;border-color:#e91916;color:#fff;font-size:12px}
+body.kb #send{min-height:34px}
 #bar #men{padding:0 9px;min-width:0;flex:none}
 #bar #men.on{background:var(--p);color:var(--pt)}
 #bar #men.new{outline:2px solid var(--p)}
@@ -120,14 +127,14 @@ dialog::backdrop{background:#0009}
 #tip{position:fixed;inset:auto;margin:0;overflow:visible;z-index:90;max-width:min(72vw,240px);background:var(--card);color:var(--fg);border:1px solid var(--p);border-radius:6px;padding:3px 7px;font:11px/1.3 var(--ff);box-shadow:0 4px 14px #0009;pointer-events:none;word-break:break-word}
 #tip:not(.on){display:none}
 #tip.on{display:block}
-.b[data-k=founder]{filter:drop-shadow(0 0 3px #f5b82e99)}
-#fdlg{text-align:center;padding:24px 18px 18px;border:1px solid #f5b82e;box-shadow:0 0 34px #f5b82e55,0 10px 40px #000a}
+.b[data-k=founder]{width:calc(var(--bs)*1.1);height:calc(var(--bs)*1.1);margin:-1px 3px -1px 0;filter:drop-shadow(0 1px 2px #5a1fd1aa)}
+#fdlg{text-align:center;padding:24px 18px 18px;border:1px solid #9147ff;box-shadow:0 0 34px #9147ff66,0 10px 40px #000a}
 #fdlg img{width:96px;height:96px;display:block;margin:0 auto 10px;animation:fpop .7s cubic-bezier(.2,1.4,.4,1) both,fglow 2.4s ease-in-out .7s infinite}
-#fdlg h2{margin:0 0 4px;font-size:21px;background:linear-gradient(100deg,#8f6b2e 0%,#f6e7b8 25%,#c9a24f 50%,#f6e7b8 75%,#8f6b2e 100%) 0 0/250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:sheen 5s linear infinite}
+#fdlg h2{margin:0 0 4px;font-size:21px;background:linear-gradient(100deg,#7a3df0 0%,#e6d4ff 25%,#b184ff 50%,#e6d4ff 75%,#7a3df0 100%) 0 0/250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:sheen 5s linear infinite}
 #fdlg p{margin:0 0 16px;color:var(--mut);font-size:14px}
-#fdlg button{background:linear-gradient(135deg,#f6e7b8,#c9a24f);color:#2a1a00;font-weight:600;padding:0 26px}
+#fdlg button{background:linear-gradient(135deg,#b184ff,#6a2fdb);color:#fff;font-weight:600;padding:0 26px}
 @keyframes fpop{from{transform:scale(.2) rotate(-30deg);opacity:0}}
-@keyframes fglow{50%{filter:drop-shadow(0 0 12px #f5b82e)}}
+@keyframes fglow{50%{filter:drop-shadow(0 0 12px #9147ff)}}
 #vid{flex:none;width:100%;height:min(56.25vw,42dvh);background:#000;position:relative}
 #vid[hidden]{display:none}
 #vid iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
@@ -135,19 +142,40 @@ dialog::backdrop{background:#0009}
 body.kb #vid{display:none}
 #bar #tv{padding:0 11px;min-width:0;flex:none}
 #bar #tv.on{background:var(--p);color:var(--pt)}
+#vid .vl:empty{display:none}
+#vid .vl{position:absolute;right:8px;top:8px;z-index:2;pointer-events:none;background:#000b;color:#fff;border:1px solid var(--p);border-radius:6px;padding:2px 8px;font-size:12px;line-height:1.4}
 #vid .vb{position:absolute;left:8px;top:8px;z-index:2;display:flex;gap:6px;pointer-events:none}
 #vid .vb span{background:#000b;color:#fff;border:1px solid var(--p);border-radius:6px;padding:2px 8px;font-size:12px;line-height:1.4}
 #vid .vb .gold{border-color:#f5b82e;color:#ffd66b}
 #vid .vb.act{pointer-events:auto;cursor:pointer}
+.m:not(.sys){-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.m{position:relative}
+.m:not(.sys):not(.noreply){padding-right:34px}
+.rb{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:26px;height:22px;min-height:0!important;padding:0!important;border-radius:6px;background:none!important;color:var(--mut)!important;font-size:14px;line-height:1;opacity:.7}
+.rb:active{background:var(--chip)!important;color:var(--fg)!important}
+.rc{display:block;color:var(--mut);font-size:.8em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#rbar{display:none;align-items:center;gap:8px;flex:none;padding:5px 10px;border-top:1px solid var(--line);background:var(--bg);font-size:13px;color:var(--mut)}
+#rbar.on{display:flex}
+#rbar span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#rbar b{color:var(--fg)}
+#rbar button{background:none;color:var(--mut);min-height:26px;padding:0 6px;font-size:16px}
+#amenu{position:fixed;z-index:70;display:none;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 20px #000a;overflow:hidden}
+#amenu.on{display:flex}
+#amenu button{background:none;color:var(--fg);border-radius:0;min-height:38px;padding:0 16px;font-size:14px}
+#amenu button+button{border-left:1px solid var(--line)}
+.m.cph{background:color-mix(in srgb,var(--p) 28%,transparent)}
+#cpl{position:fixed;z-index:60;pointer-events:none;font-size:11px;line-height:1.3;padding:1px 7px;border-radius:5px;background:var(--p);color:var(--pt);opacity:0;transition:opacity .15s;transform:translateX(-50%)}
+#cpl.on{opacity:1}
 </style>
 </head>
 <body>
 <div id="vid" hidden></div>
 <div id="chat"><div id="empty">No channels open<br>Tap + to add one</div><button id="jump" aria-label="Jump to latest messages">↓</button></div>
 <div id="sug"><div class="sr" id="sun"></div><div class="sr" id="sue"></div></div>
+<div id="rbar"><span></span><button id="rx" type="button" aria-label="Cancel reply">✕</button></div>
 <form id="f">
   <input id="in" placeholder="Send a message" autocomplete="off" enterkeyhint="send">
-  <button id="send">Send</button>
+  <button id="send" aria-label="Send">→</button>
 </form>
 <nav id="bar">
   <div id="tabs"></div>
@@ -157,6 +185,7 @@ body.kb #vid{display:none}
   <button id="cog" aria-label="Settings">⚙</button>
 </nav>
 <div id="notis"></div>
+<div id="amenu"><button data-a="reply">Reply</button><button data-a="copy">Copy</button><button data-a="paste">Paste</button></div>
 <dialog id="card"></dialog>
 <dialog id="fdlg"></dialog>
 <dialog id="dlg">
@@ -178,7 +207,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---------- settings (saved per Twitch account, guests share "guest") ----------
 const DEF = {
-  theme: 'black', tv: 1, accent: '#9147ff', font: 'sys', fs: 13, pad: 2, alt: true, fixc: true, es: 28, bs: 18, lv: 2,
+  theme: 'dark', tv: 2, accent: '#9147ff', font: 'sys', fs: 13, pad: 2, alt: true, fixc: true, es: 28, bs: 18, lv: 2,
   ts: true, h12: false, hist: true, max: 500, badges: true, paints: true, tips: true,
   noti: true, banner: true, bdur: 6, sysnoti: false, sound: 'ding', vol: 70,
   hl: true, hlc: '#ffb300', mutew: '', muteu: '',
@@ -190,7 +219,7 @@ const ckey = () => 'cfg:' + (auth.u || 'guest');
 const loadCfg = () => {
   const saved = store.get(ckey(), store.get('cfg:guest', {})), c = { ...DEF, ...saved };
   if (saved.lv !== DEF.lv) Object.assign(c, { fs: DEF.fs, pad: DEF.pad, es: DEF.es, bs: DEF.bs, lv: DEF.lv });
-  if (saved.tv !== 1) Object.assign(c, { theme: 'black', tv: 1 }); // one time: switch to the pure black theme (you can still change it in Settings > Look)
+  if (saved.tv !== 2) Object.assign(c, { theme: 'dark', tv: 2 }); // one time: switch to the Chatsen-style grey theme (you can still change it in Settings > Look)
   return c;
 };
 let cfg = loadCfg();
@@ -478,7 +507,7 @@ function onIrc(m) {
   else if (m.cmd == 'NOTICE' && m.tags['msg-id'] == 'msg_duplicate' && cfg.dupfix && c.lastText != null && (c.dupRetry || 0) < 3 && ws && ws.readyState == 1) {
     // Twitch still saw it as a duplicate: quietly resend it with a different invisible ending
     c.dupRetry = (c.dupRetry || 0) + 1; c.dupN = ((c.dupN || 0) % 12) + 1; c.lastWire = dupWire(c.lastText, c.dupN);
-    ws.send(`PRIVMSG #${c.name} :${c.lastWire}`);
+    ws.send(`${c.lastReply ? '@reply-parent-msg-id=' + c.lastReply + ' ' : ''}PRIVMSG #${c.name} :${c.lastWire}`);
   }
   else if (m.cmd == 'NOTICE' && m.tags['msg-id']) {
     sys(c, m.trailing || m.tags['msg-id']);
@@ -563,6 +592,16 @@ function mkMsg(m, c, hist) {
   text = text.replace(/[\u{E0000}-\u{E007F}\u200B-\u200F\u2060-\u2064\u034F\uFEFF\u180E\uFFFC]/gu, '').trimEnd(); // invisible characters used to bypass the duplicate block
   const d = document.createElement('div');
   d.className = 'm' + (hist ? ' h' : ''); if (m.tags.id) d.dataset.id = m.tags.id;
+  d.dataset.raw = text; // for hold-to-copy
+  if (m.nick) d.dataset.login = m.nick;
+  const rpl = m.tags['reply-parent-user-login'];
+  if (rpl) {
+    const pre = '@' + rpl + ' ';
+    if (text.toLowerCase().startsWith(pre.toLowerCase())) { text = text.slice(pre.length); d.dataset.raw = text }
+    const rc = document.createElement('span'); rc.className = 'rc';
+    rc.textContent = '↩ @' + rpl + ': ' + (m.tags['reply-parent-msg-body'] || '').replace(/\\s/g, ' ');
+    d.append(rc);
+  }
   const img = (url, cls, parent, title, bg, k) => { const i = new Image(); i.src = url; i.className = cls; i.title = i.alt = title || ''; if (k) i.dataset.k = k; if (bg) { i.style.backgroundColor = bg; i.style.borderRadius = '4px' } let tr = 0; i.onerror = () => { if (tr++ < 3) setTimeout(() => { i.src = url + (url.includes('?') ? '&' : '?') + 'r=' + tr }, 500 * tr); else i.remove() }; i.onload = () => { if (c.pin) toBottom(c) }; parent.append(i) };
   if (cfg.hl && auth.u && (m.nick || '').toLowerCase() != auth.u.toLowerCase() &&
       new RegExp('(^|\\W)@?' + auth.u.replace(/\W/g, '') + '(?!\\w)', 'i').test(text)) d.classList.add('hl');
@@ -634,6 +673,9 @@ function mkMsg(m, c, hist) {
     else { fb.style.cssText = 'color:var(--mut);font-size:.8em'; fb.textContent = '⟨' + [...m.trailing].map(ch => 'U+' + ch.codePointAt(0).toString(16).toUpperCase()).join(' ') + '⟩' }
     root.append(fb);
   }
+  if (m.tags.id && !m.echo) {
+    const rb = document.createElement('button'); rb.className = 'rb'; rb.type = 'button'; rb.textContent = '↩'; rb.setAttribute('aria-label', 'Reply'); d.append(rb);
+  } else d.classList.add('noreply');
   return d;
 }
 
@@ -880,7 +922,7 @@ const fmark = () => cfg.fmark && auth.id ? FMARK : '';
 const clip = t => fmark() && t.length > 480 ? [...t].slice(0, 480).join('') : t;
 const dupWire = (text, n) => clip(text) + ' ' + '\u{E0000}'.repeat(n) + fmark();
 const plainWire = text => fmark() ? clip(text) + ' ' + fmark() : text;
-function sendMsg(c, text) {
+function sendMsg(c, text, rp) {
   if (!ws || ws.readyState != 1) return false;
   let wire = plainWire(text);
   c.dupRetry = 0;
@@ -889,13 +931,24 @@ function sendMsg(c, text) {
     // invisible characters each time, so every send differs from the one before it (even if some were rejected).
     if (text === c.lastText) { c.dupN = ((c.dupN || 0) % 12) + 1; wire = dupWire(text, c.dupN) } else c.dupN = 0;
   }
-  c.lastText = text;
-  ws.send(`PRIVMSG #${c.name} :${wire}`);
+  c.lastText = text; c.lastReply = rp ? rp.id : null;
+  const rtag = rp ? `@reply-parent-msg-id=${rp.id} ` : '';
+  if (rp) wire = '@' + rp.login + ' ' + wire;
+  ws.send(`${rtag}PRIVMSG #${c.name} :${wire}`);
   const now = Date.now();
   sentLog.push(now); c.lastSent = now; c.lastWire = wire;
-  push(c, mkMsg({ tags: { ...(c.me || {}), 'display-name': auth.u, 'user-id': auth.id, emotes: '' }, trailing: text, nick: auth.u, echo: true }, c));
+  push(c, mkMsg({ tags: { ...(c.me || {}), 'display-name': auth.u, 'user-id': auth.id, emotes: '', ...(rp ? { 'reply-parent-user-login': rp.login, 'reply-parent-msg-body': rp.text } : {}) }, trailing: text, nick: auth.u, echo: true }, c))
   return true;
 }
+
+let replyTo = null;
+function setReply(r) {
+  replyTo = r;
+  const b = $('#rbar'); b.classList.toggle('on', !!r);
+  if (r) { b.firstElementChild.innerHTML = ''; const x = document.createElement('b'); x.textContent = '@' + r.login; b.firstElementChild.append('Replying to ', x, ': ' + r.text) }
+}
+$('#rx').onclick = () => setReply(null);
+$('#rx').addEventListener('mousedown', e => e.preventDefault());
 
 let spam = null, blockSubmit = 0;
 const sendBtn = $('#send');
@@ -913,7 +966,7 @@ function startSpam() {
       if (cfg.maxspam && s.n >= cfg.maxspam) break;
     }
     if (spam === s) spam = null;
-    sendBtn.classList.remove('hot'); sendBtn.textContent = 'Send';
+    sendBtn.classList.remove('hot'); sendBtn.textContent = '→';
     if (s.n) { $('#in').value = ''; sys(c, `Spam sent ${s.n} message${s.n == 1 ? '' : 's'}.`) }
   })();
   return true;
@@ -939,7 +992,8 @@ $('#f').onsubmit = e => {
   if (!(auth.u && auth.t)) { openSettings('Account'); return }
   const c = chans[cur], w = waitFor(c);
   if (w > 0) { sys(c, `Rate limit: wait ${(w / 1000).toFixed(1)}s before sending.`); return }
-  if (sendMsg(c, text)) $('#in').value = '';
+  const rp = replyTo && replyTo.ch == cur ? replyTo : null;
+  if (sendMsg(c, text, rp)) { $('#in').value = ''; setReply(null) }
 };
 
 // ---------- keyboard: opening follows the real viewport; closing glides down on its own ----------
@@ -1167,20 +1221,42 @@ async function loadMine() {
 
 // ---------- watch the stream (Twitch's own player above the chat) ----------
 const vid = $('#vid'), tvBtn = $('#tv');
-let tvOn = store.get('tvOn', false), tvFor = null;
+let tvOn = store.get('tvOn', false), tvFor = null, tvTok = 0, vPlayer = null, vLat = null;
+// Twitch's player API (reads how far behind live the video is)
+let embedJS = null;
+const loadEmbed = () => embedJS ||= new Promise(r => { const s = document.createElement('script'); s.src = 'https://embed.twitch.tv/embed/v1.js'; s.onload = () => r(!!window.Twitch?.Player); s.onerror = () => r(false); document.head.append(s) });
+function updLat() {
+  const e = vid.querySelector('.vl'); if (!e) return;
+  e.textContent = vLat != null ? 'Stream ~' + vLat + 's behind live' : '';
+}
+setInterval(() => {
+  if (!vPlayer || document.hidden) return;
+  try { const v = vPlayer.getPlaybackStats?.().hlsLatencyBroadcaster; if (typeof v == 'number' && v > 0 && v < 120 && (vLat == null || Math.abs(v - vLat) >= 1.5)) vLat = Math.round(v) } catch {}
+  updLat();
+}, 2000);
 function syncVideo() {
   const c = chans[cur], ok = tvOn && c && cur[0] != '@';
   tvBtn.classList.toggle('on', tvOn);
-  if (!ok) { vid.hidden = true; vid.replaceChildren(); tvFor = null; return }
+  if (!ok) { vid.hidden = true; vid.replaceChildren(); tvFor = null; vPlayer = null; vLat = null; tvTok++; return }
   vid.hidden = false;
   if (tvFor == c.name) return;
-  tvFor = c.name; vid.replaceChildren();
+  tvFor = c.name; vid.replaceChildren(); vPlayer = null; vLat = null; tvTok++;
   const host = location.hostname;
   if (!host) { const d = document.createElement('div'); d.className = 'vn'; d.textContent = 'Open the app from its website address (not a saved file) to watch streams.'; vid.append(d); return }
-  const f = document.createElement('iframe');
-  f.src = 'https://player.twitch.tv/?channel=' + encodeURIComponent(c.name) + '&parent=' + encodeURIComponent(host) + '&autoplay=true&muted=false';
-  f.allow = 'autoplay; fullscreen; picture-in-picture'; f.allowFullscreen = true; f.title = c.name + ' stream';
-  vid.append(f);
+  const holder = document.createElement('div'); holder.id = 'twp'; holder.style.cssText = 'position:absolute;inset:0'; vid.append(holder);
+  const lat = document.createElement('div'); lat.className = 'vl'; vid.append(lat);
+  const name = c.name, tok = ++tvTok;
+  loadEmbed().then(ok => {
+    if (tok != tvTok) return; // the channel changed meanwhile
+    if (ok) { try { vPlayer = new Twitch.Player('twp', { channel: name, parent: [host], autoplay: true, muted: false, width: '100%', height: '100%' }) } catch { vPlayer = null } }
+    if (!vPlayer) {
+      const f = document.createElement('iframe');
+      f.src = 'https://player.twitch.tv/?channel=' + encodeURIComponent(name) + '&parent=' + encodeURIComponent(host) + '&autoplay=true&muted=false';
+      f.allow = 'autoplay; fullscreen; picture-in-picture'; f.allowFullscreen = true; f.title = name + ' stream'; f.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
+      holder.replaceChildren(f);
+    }
+    updLat();
+  });
   syncSub();
 }
 tvBtn.onclick = () => { tvOn = !tvOn; store.set('tvOn', tvOn); syncVideo() };
@@ -1302,6 +1378,69 @@ document.addEventListener('pointercancel', lpCancel, true);
 document.addEventListener('pointermove', e => { if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 14) lpCancel() }, true);
 document.addEventListener('contextmenu', e => { if (cfg.tips && lpTarget(e)) e.preventDefault() }, true);
 document.addEventListener('click', e => { if (noClick) { e.stopPropagation(); e.preventDefault(); noClick = 0 } }, true);
+
+// ---------- hold a message: Reply / Copy / Paste menu; tap the small ↩ to reply ----------
+{
+  const menu = $('#amenu');
+  let cpT = null, cpDown = null, target = null, lbl = null, flashT = 0;
+  const flash = (txt, x, y) => {
+    if (!lbl) { lbl = document.createElement('div'); lbl.id = 'cpl'; document.body.append(lbl) }
+    lbl.textContent = txt; lbl.style.left = Math.max(30, Math.min(innerWidth - 30, x)) + 'px'; lbl.style.top = Math.max(6, y - 34) + 'px';
+    lbl.classList.add('on'); clearTimeout(flashT); flashT = setTimeout(() => lbl.classList.remove('on'), 1100);
+  };
+  const tryCopy = async t => {
+    try { await navigator.clipboard.writeText(t); return true } catch {}
+    try { const a = document.createElement('textarea'); a.value = t; a.style.cssText = 'position:fixed;opacity:0;top:0'; document.body.append(a); a.select(); const ok = document.execCommand('copy'); a.remove(); return ok } catch { return false }
+  };
+  const hide = () => { menu.classList.remove('on'); target = null };
+  const startReply = row => {
+    const ch = row.dataset.ch || cur, id = row.dataset.id; if (!id || !ch || ch[0] == '@') return false;
+    if (ch != cur) return false;
+    setReply({ id, login: row.dataset.login || '', text: (row.dataset.raw || '').slice(0, 80), ch });
+    $('#in').focus(); return true;
+  };
+  const insertText = t => {
+    const i = $('#in'), a = i.selectionStart ?? i.value.length, b = i.selectionEnd ?? a;
+    i.value = i.value.slice(0, a) + t + i.value.slice(b); i.focus();
+    const p = a + t.length; try { i.setSelectionRange(p, p) } catch {}
+    i.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const show = (row, x, y) => {
+    target = row;
+    menu.querySelector('[data-a=reply]').style.display = row.dataset.id && cur[0] != '@' ? '' : 'none';
+    menu.classList.add('on');
+    const w = menu.offsetWidth, h = menu.offsetHeight;
+    menu.style.left = Math.max(6, Math.min(innerWidth - w - 6, x - w / 2)) + 'px';
+    menu.style.top = Math.max(6, y - h - 18) + 'px';
+    navigator.vibrate?.(12);
+  };
+  menu.addEventListener('pointerdown', e => e.preventDefault()); // keep keyboard / input focus
+  menu.addEventListener('click', async e => {
+    const btn = e.target.closest('button'); if (!btn || !target) return;
+    const row = target, a = btn.dataset.a, x = cpDown?.x || innerWidth / 2, y = cpDown?.y || 80; hide();
+    if (a == 'reply') startReply(row);
+    else if (a == 'copy') flash(await tryCopy(row.dataset.raw || '') ? 'Copied' : 'Copy failed', x, y);
+    else if (a == 'paste') {
+      try { insertText(await navigator.clipboard.readText()) } catch { $('#in').focus(); flash('Tap the box and choose Paste', x, y) }
+    }
+  });
+  document.addEventListener('pointerdown', e => {
+    clearTimeout(cpT); cpT = null;
+    if (e.target.closest?.('#amenu')) return;
+    if (menu.classList.contains('on')) { hide(); noClick = 1; setTimeout(() => { noClick = 0 }, 300); return }
+    if (e.button > 0 || (cfg.tips && lpTarget(e)) || e.target.closest?.('.rb')) return;
+    const row = e.target.closest?.('.m'); if (!row || row.classList.contains('sys') || !row.dataset.raw) return;
+    cpDown = { x: e.clientX, y: e.clientY };
+    cpT = setTimeout(() => { cpT = null; noClick = 1; row.classList.add('cph'); setTimeout(() => row.classList.remove('cph'), 600); show(row, cpDown.x, cpDown.y) }, 450);
+  }, true);
+  const end = () => { clearTimeout(cpT); cpT = null };
+  document.addEventListener('pointerup', end, true);
+  document.addEventListener('pointercancel', end, true);
+  document.addEventListener('pointermove', e => { if (cpT && cpDown && Math.hypot(e.clientX - cpDown.x, e.clientY - cpDown.y) > 14) end() }, true);
+  document.addEventListener('contextmenu', e => { if (e.target.closest?.('.m:not(.sys)')) e.preventDefault() }, true);
+  $('#chat').addEventListener('scroll', () => { if (menu.classList.contains('on')) hide() }, true);
+  document.addEventListener('click', e => { const rb = e.target.closest?.('.rb'); if (rb) { e.stopPropagation(); startReply(rb.closest('.m')) } }, true);
+}
 
 // ---------- user card (tap a name) ----------
 $('#chat').addEventListener('click', e => {
@@ -1435,16 +1574,25 @@ function modTools(card, c, login, uid, msgId) {
 // added to the end of your messages (Settings > Look > "Show my Founder badge"), and remember you afterwards.
 const FMARK = '\u{E006B}\u{E0076}\u{E0066}';
 const FOUNDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36"><defs>
-<linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff6c2"/><stop offset=".45" stop-color="#f5b82e"/><stop offset="1" stop-color="#9a560b"/></linearGradient>
-<linearGradient id="p" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#b57cff"/><stop offset="1" stop-color="#3a1590"/></linearGradient>
-<linearGradient id="c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffbe0"/><stop offset="1" stop-color="#f0a920"/></linearGradient>
-<clipPath id="k"><path d="M18 1.5 32.3 9.75v16.5L18 34.5 3.7 26.25V9.75z"/></clipPath></defs>
-<path d="M18 1.5 32.3 9.75v16.5L18 34.5 3.7 26.25V9.75z" fill="url(#g)" stroke="#fff3b0" stroke-width=".8"/>
-<path d="M18 5 29.2 11.5v13L18 31 6.8 24.5v-13z" fill="url(#p)" stroke="#7a3fd1" stroke-width=".6"/>
-<path d="M10.5 22.5 9.2 12.8l4.6 3.9L18 10l4.2 6.7 4.6-3.9-1.3 9.7z" fill="url(#c)" stroke="#8a4f06" stroke-width=".5" stroke-linejoin="round"/>
-<rect x="10.8" y="23.6" width="14.4" height="2" rx=".8" fill="url(#c)" stroke="#8a4f06" stroke-width=".4"/>
-<circle cx="18" cy="19" r="1.6" fill="#ff4d8d" stroke="#fff" stroke-width=".4"/>
-<g clip-path="url(#k)"><rect x="-14" y="-6" width="8" height="48" fill="#fff" opacity=".6" transform="rotate(20 18 18)"><animate attributeName="x" values="-14;44;44" keyTimes="0;.5;1" dur="3.2s" repeatCount="indefinite"/></rect></g></svg>`;
+<linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0e4ff"/><stop offset="1" stop-color="#c29bff"/></linearGradient>
+<linearGradient id="l" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#b184ff"/><stop offset="1" stop-color="#7f43f2"/></linearGradient>
+<linearGradient id="r" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9658ff"/><stop offset="1" stop-color="#5f27cf"/></linearGradient>
+<linearGradient id="a" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8a4dff"/><stop offset="1" stop-color="#4f1fb0"/></linearGradient>
+<linearGradient id="b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9b63ff"/><stop offset="1" stop-color="#43168f"/></linearGradient>
+<linearGradient id="c" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6a2fdb"/><stop offset="1" stop-color="#2d0d6e"/></linearGradient>
+<clipPath id="k"><path d="M8 1H28L36 13L18 35L0 13Z"/></clipPath></defs>
+<path d="M8 1H28L36 13L18 35L0 13Z" fill="#43168f"/>
+<path d="M8 1H28L24 13H12Z" fill="url(#t)"/>
+<path d="M8 1L12 13H0Z" fill="url(#l)"/>
+<path d="M28 1L36 13H24Z" fill="url(#r)"/>
+<path d="M0 13H12L18 35Z" fill="url(#a)"/>
+<path d="M12 13H24L18 35Z" fill="url(#b)"/>
+<path d="M24 13H36L18 35Z" fill="url(#c)"/>
+<g fill="none" stroke="#f3eaff" stroke-opacity=".5" stroke-width=".6" stroke-linejoin="round"><path d="M8 1L12 13L18 35L24 13L28 1M0 13H36M12 13L0 13M24 13L36 13"/></g>
+<path d="M10 2.6H21L19.6 5.6H9.2Z" fill="#fff" opacity=".6"/>
+<path d="M27.2 3.2l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" fill="#fff"/>
+<path d="M8 1H28L36 13L18 35L0 13Z" fill="none" stroke="#2b0b66" stroke-width="1.1" stroke-linejoin="round"/>
+<g clip-path="url(#k)"><rect x="-14" y="-6" width="7" height="48" fill="#fff" opacity=".5" transform="rotate(20 18 18)"><animate attributeName="x" values="-14;44;44" keyTimes="0;.5;1" dur="3.4s" repeatCount="indefinite"/></rect></g></svg>`;
 const FOUNDER_URL = 'data:image/svg+xml;utf8,' + encodeURIComponent(FOUNDER_SVG);
 const founders = store.get('founders', {});
 const addFounder = uid => { if (!uid || founders[uid]) return; founders[uid] = 1; const k = Object.keys(founders); if (k.length > 5000) delete founders[k[0]]; store.set('founders', founders) };
